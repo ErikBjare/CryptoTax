@@ -1,0 +1,7 @@
+*.pyc
+
+# Editor
+*.swp
+
+
+data_private/*
