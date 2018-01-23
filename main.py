@@ -34,9 +34,9 @@ def _format_csv_from_kraken(trades_csv):
 
 def _print_trades(trades, n=None):
     h = dict(zip(trades[0].keys(), trades[0].keys()))
-    print(f"{h['time']:10.10}  {h['pair']:12.12}  {h['price']:10.10}  {h['cost']:10.10}")
+    print(f"{h['time']:10}  {h['pair']:12.12}  {h['price']:12}  {h['vol']:9}  {h['cost']:12.10}")
     for d in (trades[:n] if n else trades):
-        print(f"{d['time'].isoformat():10.10}  {' / '.join(d['pair']):12.12}  {d['price']:10.10}  {d['cost']:10.10}")
+        print(f"{d['time'].isoformat():.10}  {' / '.join(d['pair']):12}  {d['price']:12.6}  {d['vol']:9.6}  {d['cost']:12.6}")
 
 
 def _sum_trades(t1, t2):
