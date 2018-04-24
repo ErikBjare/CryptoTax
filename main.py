@@ -46,13 +46,24 @@ def _load_incoming_balances() -> List[Dict[str, Any]]:
         return []
 
 
+symbolmap = {
+    "XXBTC": "XXBT",
+    "XBT": "XXBT",
+    "XXDG": "XXDG",
+    "ETH": "XETH",
+    "BCH": "XBCH",
+    "GNO": "XGNO",
+    "EOS": "XEOS",
+}
+
+
 def _format_csv_from_kraken(trades_csv):
     "Format a CSV from a particular source into a canonical data format"
     for trade in trades_csv:
         # Kraken has really weird pair formatting...
         pairlen = int(len(trade["pair"]) / 2)
         trade["pair"] = (trade["pair"][:pairlen], trade["pair"][pairlen:])
-        trade["pair"] = tuple(map(lambda asset: "XXBTC" if asset == "XBT" else asset, trade["pair"]))
+        trade["pair"] = tuple(map(lambda symbol: symbolmap[symbol] if symbol in symbolmap else symbol, trade["pair"]))
 
         trade["time"] = dateutil.parser.parse(trade["time"])
         trade["price"] = float(trade["price"])
@@ -231,7 +242,7 @@ def _print_trade_header():
 
 
 def _print_trade(t):
-    print(f"{str(t['pair']).ljust(16)}  {t['type'].ljust(5)}  {str(round(t['vol'], 3)).ljust(10)}  ${t['cost_usd']}")
+    print(f"{' / '.join(t['pair']).ljust(16)}  {t['type'].ljust(5)}  {str(round(t['vol'], 3)).ljust(10)}  ${t['cost_usd']}")
 
 
 def main():
@@ -247,7 +258,7 @@ def main():
     print("\n# Cost basis per asset")
     _cost_basis_per_asset(trades)
 
-    for year in range(2017, 2019):
+    for year in range(2015, 2019):
         balances = defaultdict(lambda: 0)  # type: Dict[str, int]
         trades_for_year = _filter_trades_by_time(trades, year)
         _calculate_inout_balances(balances, trades_for_year)
