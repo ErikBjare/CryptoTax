@@ -7,6 +7,14 @@ from bs4 import BeautifulSoup
 
 
 _coinmarketcap_data_filename = "tmp/{}-coinmarketcap-data.pickle"
+_pricehistory_filename = "tmp/{}-pricehistory.pickle"
+
+
+currency2symbolmap = {
+    "bitcoin": "XXBT",
+    "ethereum": "XETH",
+    "stellar": "XXLM"
+}
 
 
 def get_data_from_coinmarketcap(currency):
@@ -39,7 +47,17 @@ def parse_table(doc):
             print(f"Incomplete row: {cells}")
 
     d = {datetime.strptime(r["date"], "%b %d, %Y").date(): r for r in rows}
+    for k, v in d.items():
+        v.pop("date")
+        v.pop("market cap")
+        d[k] = {ohlc: float(d[k][ohlc].replace(",", "")) for ohlc in d[k]}
     return d
+
+
+def _save_table(currency, data):
+    with open(_pricehistory_filename.format(currency2symbolmap[currency]), "wb") as f:
+        pickle.dump(data, f)
+        print(f"Price history for {currency} saved!")
 
 
 def test_everything():
@@ -56,12 +74,10 @@ def test_everything():
 
 if __name__ == "__main__":
     # get_data("bitcoin")
-    data = load_data("bitcoin")
-    table = parse_table(data.text)
-
-    assert table[date(2017, 1, 1)]["open"]
-    assert table[date(2017, 1, 1)]["high"]
-    assert table[date(2017, 1, 1)]["low"]
-    assert table[date(2017, 1, 1)]["close"]
+    for currency in ["bitcoin", "ethereum", "stellar"]:
+        print(f"Getting price history for {currency}...")
+        data = load_data(currency)
+        table = parse_table(data.text)
+        _save_table(currency, table)
 
     # print(data.text)
