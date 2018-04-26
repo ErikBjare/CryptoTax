@@ -6,7 +6,7 @@ from itertools import groupby
 from collections import defaultdict
 from datetime import datetime, date
 from pathlib import Path
-from copy import deepcopy
+from copy import copy, deepcopy
 
 import dateutil.parser
 
@@ -69,6 +69,8 @@ symbolmap = {
     "BCH": "XBCH",
     "GNO": "XGNO",
     "EOS": "XEOS",
+    "STR": "XXLM",
+    "SC": "XXSC",
 }
 
 
@@ -107,9 +109,6 @@ def _format_csv_from_poloniex(trades_csv):
         del trade["Fee"]
         del trade["Base Total Less Fee"]
         del trade["Quote Total Less Fee"]
-
-    print(trades_csv[0])
-
     return trades_csv
 
 
@@ -166,19 +165,19 @@ def _calc_cost_usd(trades):
 
     for trade in trades:
         date = trade["time"].date().isoformat()
-        if trade["pair"][1] in ["ZEUR"]:
+        if trade["pair"][1] == "ZEUR":
             # Buy/sell something valued in EUR
             trade["cost_usd"] = trade["cost"] * eurusd_rate
 
-        elif trade["pair"][1] in ["XXBT", "XBT", "XXBTC"]:
+        elif trade["pair"][1] == "XXBT":
             # Buy/sell something valued in BTC
             trade["cost_usd"] = trade["cost"] * btcusd_price_csv[date]
 
-        elif trade["pair"][1] in ["ETH", "XETH"]:
+        elif trade["pair"][1] == "XETH":
             # Buy/sell something valued in ETH
             trade["cost_usd"] = trade["cost"] * ethusd_price_csv[date]
 
-        elif trade["pair"][1] in ["XXLM"]:
+        elif trade["pair"][1] == "XXLM":
             # Buy/sell something valued in XLM
             trade["cost_usd"] = trade["cost"] * xlmusd_price_csv[date]
 
@@ -204,9 +203,12 @@ def _cost_basis_per_asset(trades):
             costbasis[trade["pair"][0]] += trade["cost_usd"]
             vol[trade["pair"][0]] += trade["vol"]
 
-    print(f"Asset   Costbasis         Vol     Cost/vol")
+    print(f"Asset   Costbasis  Vol       Cost/vol")
     for asset in costbasis:
-        print(f"{asset.ljust(5)}   {round(costbasis[asset]):8}$     {vol[asset]:7}  {round(costbasis[asset]/vol[asset], 3):10.10}$")
+        print(f"{asset.ljust(6)}  " +
+              f"${str(round(costbasis[asset])).ljust(8)}  " +
+              f"{str(round(vol[asset], 3)).ljust(8)}  " +
+              f"${str(round(costbasis[asset]/vol[asset], 3)).ljust(8)}")
 
 
 def _filter_trades_by_time(trades, year):
@@ -220,30 +222,50 @@ def test_filter_trades_by_time():
     assert 1 == len(_filter_trades_by_time([_t1, _t2], 2018))
 
 
-def _normalize_trade_type(t):
-    """
-    Normalizes t trades into a buy by flipping the pair
-    such that asset1 is always being bought
-    """
-    # WARNING: NOT WORKING AND NOT TESTED
-    # not even sure if it's a good idea to use it even if it worked perfectly
-    raise NotImplementedError
-    print(t)
-    if t["type"] == "sell":
-        t["pair"] = tuple(reversed(t["pair"]))
-        t["vol"] = t["cost"] / t["price"]
-        t["price"] = 1 / t["price"]
+def _flip_pair(t):
+    t = copy(t)
+    assert t["type"] in ["buy", "sell"]
+    t["type"] = "buy" if t["type"] == "sell" else "sell"
+    t["pair"] = tuple(reversed(t["pair"]))
+    t["price"] = 1 / t["price"]
+    t["vol"], t["cost"] = t["cost"], t["vol"]
     return t
 
 
-def _test_normalize_trade_type():
-    # TODO: Implement? (and remove underscore prefix)
+def _normalize_trade_type(t):
+    """
+    Normalizes sell-trade t into a buy-trade by flipping the pair
+    such that asset1 is always being bought.
+    """
+    t = copy(t)
+    assert t["vol"] == t["cost"] / t["price"]
+    if t["type"] == "sell":
+        t = _flip_pair(t)
+    assert t["vol"] == t["cost"] / t["price"]
+    return t
+
+
+def test_normalize_trade_type():
     t1 = {"pair": ("XETH", "ZEUR"),
           "type": "sell",
           "vol": 10,
-          "cost": 10}
+          "price": 2,
+          "cost": 20}
     t1norm = _normalize_trade_type(t1)
-    assert t1norm["pair"] == reversed(t1["pair"])
+    assert t1norm["pair"] == tuple(reversed(t1["pair"]))
+    assert t1norm["vol"] == 20
+    assert t1norm["price"] == 0.5
+    assert t1norm["cost"] == 10
+
+    t2 = {"pair": ("XXBT", "XETH"),
+          "type": "sell",
+          "vol": 8,
+          "price": 0.25,
+          "cost": 2}
+    t2norm = _normalize_trade_type(t2)
+    assert t2norm["pair"] == tuple(reversed(t2["pair"]))
+    assert t2norm["price"] == 4
+    assert t2norm["cost"] == 8
 
 
 def _calculate_inout_balances(balances, trades):
@@ -275,21 +297,48 @@ def _aggregate_trades(trades):
 
 
 def _print_trade_header():
-    print(f"{'Pair'.ljust(16)}  {'type'.ljust(5)}  {'vol'.ljust(10)}  {'cost_usd'}")
+    print(f"{'Pair'.ljust(12)}  {'type'.ljust(5)}  {'vol'.ljust(10)}  {'cost_usd'.ljust(10)}  {'cost_usd/unit'.ljust(12)}")
 
 
 def _print_trade(t):
-    print(f"{' / '.join(t['pair']).ljust(16)}  {t['type'].ljust(5)}  {str(round(t['vol'], 3)).ljust(10)}  ${t['cost_usd']}")
+    print(f"{' / '.join(t['pair']).ljust(12)}  " +
+          f"{t['type'].ljust(5)}  " +
+          f"{str(round(t['vol'], 3)).ljust(10)}  " +
+          f"${str(int(round(t['cost_usd']))).ljust(10)} " +
+          f"${str(round(t['cost_usd']/t['vol'], 3)).ljust(10)}")
 
 
 def load_all_trades():
-    trades_kraken_csv = _load_csv("data_private/kraken-trades.csv")
-    trades_kraken = _format_csv_from_kraken(trades_kraken_csv)
+    trades = []
 
-    trades_poloniex_csv = _load_csv("data_private/poloniex-trades.csv")
-    trades_poloniex = _format_csv_from_poloniex(trades_poloniex_csv)
+    kraken_trades_filename = "data_private/kraken-trades.csv"
+    if Path(kraken_trades_filename).exists():
+        print("Found kraken trades!")
+        trades_kraken_csv = _load_csv(kraken_trades_filename)
+        trades.extend(_format_csv_from_kraken(trades_kraken_csv))
 
-    return list(sorted(trades_kraken + trades_poloniex, key=lambda t: t["time"]))
+    polo_trades_filename = "data_private/poloniex-trades.csv"
+    if Path(polo_trades_filename).exists():
+        print("Found poloniex trades!")
+        trades_polo_csv = _load_csv(polo_trades_filename)
+        trades.extend(_format_csv_from_poloniex(trades_polo_csv))
+
+    return list(sorted(trades, key=lambda t: t["time"]))
+
+
+def _print_balances(trades, year=None):
+    balances = defaultdict(lambda: 0)  # type: Dict[str, int]
+    _calculate_inout_balances(balances, trades)
+    print(f"\n# Balance diff {f'for {year}' if year else ''}")
+    for k, v in balances.items():
+        print(f"{k.ljust(6)} {str(round(v, 3)).ljust(8)}")
+
+
+def _print_agg_trades(trades, year=None):
+    print(f"\n# Aggregate trades {f'for {year}' if year else ''}")
+    _print_trade_header()
+    for t in _aggregate_trades(trades):
+        _print_trade(t)
 
 
 def main():
@@ -303,17 +352,9 @@ def main():
     _cost_basis_per_asset(trades)
 
     for year in range(2015, 2019):
-        balances = defaultdict(lambda: 0)  # type: Dict[str, int]
         trades_for_year = _filter_trades_by_time(trades, year)
-        _calculate_inout_balances(balances, trades_for_year)
-        print(f"\n# Balance diff for {year}")
-        for k, v in balances.items():
-            print(f"{k:6.6} {v}")
-
-        print(f"\n# Aggregate trades for {year}")
-        _print_trade_header()
-        for t in _aggregate_trades(trades_for_year):
-            _print_trade(t)
+        _print_balances(trades_for_year, year)
+        _print_agg_trades(trades_for_year, year)
 
 
 if __name__ == "__main__":
