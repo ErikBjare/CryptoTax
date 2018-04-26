@@ -65,6 +65,7 @@ symbolmap = {
     "XBT": "XXBT",
     "XXDG": "XXDG",
     "ETH": "XETH",
+    "BTC": "XXBT",
     "BCH": "XBCH",
     "GNO": "XGNO",
     "EOS": "XEOS",
@@ -83,6 +84,32 @@ def _format_csv_from_kraken(trades_csv):
         trade["price"] = float(trade["price"])
         trade["vol"] = float(trade["vol"])
         trade["cost"] = float(trade["cost"])
+
+        del trade["txid"]
+        del trade["ordertxid"]
+    return trades_csv
+
+
+def _format_csv_from_poloniex(trades_csv):
+    "Format a CSV from a particular source into a canonical data format"
+    for trade in trades_csv:
+        trade["pair"] = trade.pop("Market").split("/")
+        trade["pair"] = tuple(map(lambda symbol: symbolmap[symbol] if symbol in symbolmap else symbol, trade["pair"]))
+        trade["type"] = trade.pop("Type").lower()
+
+        trade["time"] = dateutil.parser.parse(trade.pop("Date"))
+        trade["price"] = float(trade.pop("Price"))
+        trade["vol"] = float(trade.pop("Amount"))
+        trade["cost"] = float(trade.pop("Total"))
+
+        del trade["Category"]
+        del trade["Order Number"]
+        del trade["Fee"]
+        del trade["Base Total Less Fee"]
+        del trade["Quote Total Less Fee"]
+
+    print(trades_csv[0])
+
     return trades_csv
 
 
@@ -241,8 +268,6 @@ def _aggregate_trades(trades):
     agg_trades = []
     for k, v in grouped:
         t = reduce(_sum_trades, v)
-        del t["txid"]
-        del t["ordertxid"]
         del t["time"]
         agg_trades.append(t)
 
@@ -257,12 +282,19 @@ def _print_trade(t):
     print(f"{' / '.join(t['pair']).ljust(16)}  {t['type'].ljust(5)}  {str(round(t['vol'], 3)).ljust(10)}  ${t['cost_usd']}")
 
 
-def main():
-    # Prints a bunch of useful info
+def load_all_trades():
+    trades_kraken_csv = _load_csv("data_private/kraken-trades.csv")
+    trades_kraken = _format_csv_from_kraken(trades_kraken_csv)
 
-    trades_csv = _load_csv("data_private/kraken-trades.csv")
-    trades = _format_csv_from_kraken(trades_csv)
-    # print(trades[0].keys())
+    trades_poloniex_csv = _load_csv("data_private/poloniex-trades.csv")
+    trades_poloniex = _format_csv_from_poloniex(trades_poloniex_csv)
+
+    return list(sorted(trades_kraken + trades_poloniex, key=lambda t: t["time"]))
+
+
+def main():
+    """Prints a bunch of useful info"""
+    trades = load_all_trades()
     trades = _reduce_trades(trades)
     trades = _calc_cost_usd(trades)
     _print_trades(trades)
