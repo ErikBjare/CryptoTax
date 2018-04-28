@@ -91,6 +91,72 @@ def _format_csv_from_kraken(trades_csv):
         del trade["ordertxid"]
     return trades_csv
 
+def _format_csv_from_bitstamp(trades_csv):
+    "Format a CSV from a particular source into a canonical data format"
+    trades_csv = [t for t in trades_csv if t["Type"] == "Market"]
+    trades_list = []
+
+    symbols_dict = {'BTC': 'XXBT', 'EUR': 'ZEUR'}
+    for trade in trades_csv:
+        print(trade)
+        ordertype = 'market'
+        time = dateutil.parser.parse(trade["Datetime"])
+        print(time)
+        vol = float(trade['Amount'].split(' ')[0])
+        tradetype = trade["Sub Type"].lower()
+        curr1 = trade["Amount"].split(' ')[1]
+        curr2 = trade["Value"].split(' ')[1]
+        pair = (symbols_dict[curr1], symbols_dict[curr2])
+        price = float(trade["Rate"].split(' ')[0])
+        cost = float(trade["Value"].split(' ')[0])
+        fee = float(trade["Fee"].split(' ')[0])
+
+        trades_list.append({'ordertype': ordertype,
+            'time': time,
+            'vol': vol,
+            'type': tradetype,
+            'pair': pair,
+            'price': price,
+            'cost': cost,
+            'fee': fee,
+            'margin': 0.0,
+            'misc': '',
+            'ledgers': None})
+    return trades_list
+
+def _format_csv_from_lbtc(trades_csv):
+    trades_csv = [t for t in trades_csv if t[" TXtype"] == "Trade"]
+    curr1 = 'XXBT'
+    curr2 = 'ZUSD'
+    price_history = _load_pricehistory('XXBT')
+    trades_list = []
+    for trade in trades_csv:
+        time = dateutil.parser.parse(trade[' Created']).replace(tzinfo=None)
+        
+        if trade[' Received'] != "":
+          tradetype = 'buy'
+          vol = float(trade[' Received'])
+        else:
+          tradetype = 'sell'
+          vol = float(trade[' Sent'])
+
+        price = price_history[time.strftime('%Y-%m-%d')]['high']
+        cost = price * vol
+
+        pair = (curr1, curr2)
+
+        trades_list.append({'ordertype': 'market',
+          'time': time,
+          'vol': vol,
+          'type': tradetype,
+          'pair': pair,
+          'price': price,
+          'cost': cost,
+          'fee': None,
+          'margin': None,
+          'misc': '',
+          'ledgers': None})
+    return trades_list
 
 def _format_csv_from_poloniex(trades_csv):
     "Format a CSV from a particular source into a canonical data format"
@@ -180,6 +246,9 @@ def _calc_cost_usd(trades):
         elif trade["pair"][1] == "XXLM":
             # Buy/sell something valued in XLM
             trade["cost_usd"] = trade["cost"] * xlmusd_price_csv[date]
+
+        elif trade["pair"][1] == "ZUSD":
+            trade["cost_usd"] = trade["cost"]
 
         else:
             print(f"Could not calculate USD cost for pair: {trade['pair']}, add support for {trade['pair'][1]}")
@@ -309,6 +378,8 @@ def _print_trade(t):
 
 
 def load_all_trades():
+    """Loads all trades from the .csv files exported from exchanges. Currently supports Kraken and Poloniex formatted .csv files.
+    """
     trades = []
 
     kraken_trades_filename = "data_private/kraken-trades.csv"
@@ -323,6 +394,18 @@ def load_all_trades():
         trades_polo_csv = _load_csv(polo_trades_filename)
         trades.extend(_format_csv_from_poloniex(trades_polo_csv))
 
+    bitstamp_trades_filename = "data_private/bitstamp-trades.csv"
+    if Path(bitstamp_trades_filename).exists():
+        print("Found bitstamp trades!")
+        trades_bitstamp_csv = _load_csv(bitstamp_trades_filename)
+        trades.extend(_format_csv_from_bitstamp(trades_bitstamp_csv))
+    
+    lbtc_trades_filename = "data_private/lbtc-trades.csv"
+    if Path(lbtc_trades_filename).exists():
+        print("Found lbtc trades!")
+        trades_lbtc_csv = _load_csv(lbtc_trades_filename)
+        trades.extend(_format_csv_from_lbtc(trades_lbtc_csv))
+
     return list(sorted(trades, key=lambda t: t["time"]))
 
 
@@ -332,6 +415,44 @@ def _print_balances(trades, year=None):
     print(f"\n# Balance diff {f'for {year}' if year else ''}")
     for k, v in balances.items():
         print(f"{k.ljust(6)} {str(round(v, 3)).ljust(8)}")
+
+def _swedish_taxes(trades):
+    asset_cost = defaultdict(int)
+    asset_vol = defaultdict(int)
+    for trade in trades:
+        c1 = trade["pair"][0]
+        c2 = trade["pair"][1]
+        if trade["type"] == "buy":
+            if c1[0] == "X":
+                print("buy {} / {}".format(c1, c2))
+                asset_vol[c1] += trade["vol"]
+                asset_cost[c1] += trade["cost_usd"]
+            if c2[0] == "X":
+                print("sell {} / {}".format(c2, c1))
+                if c1 in asset_cost:
+                    avg_price = asset_cost[c2] / asset_vol[c2]
+                else:
+                    avg_price = 0
+                profit = trade["cost_usd"] - trade["vol"] * avg_price
+                print("profit:")
+                print(profit)
+                asset_vol[c1] -= trade["vol"]
+        elif trade["type"] == "sell":
+            if c1[0] == "X":
+                print("sell {} / {}".format(c1, c2))
+                if c1 in asset_cost:
+                    avg_price = asset_cost[c1] / asset_vol[c1]
+                else:
+                    avg_price = 0
+                profit = trade["cost_usd"] - trade["vol"] * avg_price
+                print("profit:")
+                print(profit)
+                asset_vol[c1] -= trade["vol"]
+                asset_cost
+            if c1[0] == "X":
+                print("buy {} / {}".format(c2, c1))
+                asset_vol[c1] += trade["vol"]
+                asset_cost[c1] += trade["cost_usd"]
 
 
 def _print_agg_trades(trades, year=None):
@@ -356,6 +477,7 @@ def main():
         _print_balances(trades_for_year, year)
         _print_agg_trades(trades_for_year, year)
 
+    _swedish_taxes(trades)
 
 if __name__ == "__main__":
     main()
