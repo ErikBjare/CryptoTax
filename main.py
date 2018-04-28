@@ -4,9 +4,10 @@ from typing import List, Dict, Any
 from functools import reduce
 from itertools import groupby
 from collections import defaultdict
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from pathlib import Path
 from copy import copy, deepcopy
+from currency_converter import CurrencyConverter
 
 import dateutil.parser
 
@@ -225,6 +226,7 @@ def _calc_cost_usd(trades):
     btcusd_price_csv = _load_price_csv2("XXBT")
     ethusd_price_csv = _load_price_csv2("XETH")
     xlmusd_price_csv = _load_price_csv2("XXLM")
+    cc = CurrencyConverter()
 
     # TODO: Use actual rates
     eurusd_rate = 1.23
@@ -233,7 +235,10 @@ def _calc_cost_usd(trades):
         date = trade["time"].date().isoformat()
         if trade["pair"][1] == "ZEUR":
             # Buy/sell something valued in EUR
-            trade["cost_usd"] = trade["cost"] * eurusd_rate
+            trade["cost_usd"] = cc.convert(trade["cost"], "EUR", "USD", date=next_weekday(trade["time"]))
+
+        elif trade["pair"][1] == "ZUSD":
+            trade["cost_usd"] = trade["cost"]
 
         elif trade["pair"][1] == "XXBT":
             # Buy/sell something valued in BTC
@@ -246,9 +251,6 @@ def _calc_cost_usd(trades):
         elif trade["pair"][1] == "XXLM":
             # Buy/sell something valued in XLM
             trade["cost_usd"] = trade["cost"] * xlmusd_price_csv[date]
-
-        elif trade["pair"][1] == "ZUSD":
-            trade["cost_usd"] = trade["cost"]
 
         else:
             print(f"Could not calculate USD cost for pair: {trade['pair']}, add support for {trade['pair'][1]}")
@@ -416,27 +418,40 @@ def _print_balances(trades, year=None):
     for k, v in balances.items():
         print(f"{k.ljust(6)} {str(round(v, 3)).ljust(8)}")
 
+
+def next_weekday(date):
+    if date.weekday() > 4:
+        day_gap = 7 - date.weekday()
+        return date + timedelta(days=day_gap)
+    else:
+        return date
+
+
 def _swedish_taxes(trades):
+    cc = CurrencyConverter()
     asset_cost = defaultdict(int)
     asset_vol = defaultdict(int)
     for trade in trades:
         c1 = trade["pair"][0]
         c2 = trade["pair"][1]
         if trade["type"] == "buy":
+            # Calculate cost in SEK
+            cost = cc.convert(trade["cost_usd"], "USD", "SEK", date=next_weekday(trade["time"]))
             if c1[0] == "X":
                 print("buy {} / {}".format(c1, c2))
                 asset_vol[c1] += trade["vol"]
-                asset_cost[c1] += trade["cost_usd"]
+                asset_cost[c1] += cost
             if c2[0] == "X":
                 print("sell {} / {}".format(c2, c1))
+                # Calculate average price in SEK
                 if c1 in asset_cost:
                     avg_price = asset_cost[c2] / asset_vol[c2]
                 else:
                     avg_price = 0
-                profit = trade["cost_usd"] - trade["vol"] * avg_price
-                print("profit:")
-                print(profit)
-                asset_vol[c1] -= trade["vol"]
+                profit = cost - trade["vol"] * avg_price
+                print("profit: {} SEK".format(profit))
+                asset_vol[c2] -= trade["vol"]
+                asset_cost[c2] -= cost
         elif trade["type"] == "sell":
             if c1[0] == "X":
                 print("sell {} / {}".format(c1, c2))
@@ -445,14 +460,13 @@ def _swedish_taxes(trades):
                 else:
                     avg_price = 0
                 profit = trade["cost_usd"] - trade["vol"] * avg_price
-                print("profit:")
-                print(profit)
+                print("profit: {} SEK".format(profit))
                 asset_vol[c1] -= trade["vol"]
-                asset_cost
+                asset_cost[c1] -= cost
             if c1[0] == "X":
                 print("buy {} / {}".format(c2, c1))
-                asset_vol[c1] += trade["vol"]
-                asset_cost[c1] += trade["cost_usd"]
+                asset_vol[c2] += trade["vol"]
+                asset_cost[c2] += trade["cost_usd"]
 
 
 def _print_agg_trades(trades, year=None):
