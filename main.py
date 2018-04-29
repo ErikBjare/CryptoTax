@@ -72,6 +72,7 @@ symbolmap = {
     "EOS": "XEOS",
     "STR": "XXLM",
     "SC": "XXSC",
+    "EUR": "ZEUR"
 }
 
 
@@ -81,7 +82,7 @@ def _format_csv_from_kraken(trades_csv):
         # Kraken has really weird pair formatting...
         pairlen = int(len(trade["pair"]) / 2)
         trade["pair"] = (trade["pair"][:pairlen], trade["pair"][pairlen:])
-        trade["pair"] = tuple(map(lambda symbol: symbolmap[symbol] if symbol in symbolmap else symbol, trade["pair"]))
+        trade["pair"] = tuple(map(lambda symbol: symbolmap.get(symbol, symbol), trade["pair"]))
 
         trade["time"] = dateutil.parser.parse(trade["time"])
         trade["price"] = float(trade["price"])
@@ -95,10 +96,9 @@ def _format_csv_from_kraken(trades_csv):
 
 def _format_csv_from_bitstamp(trades_csv):
     "Format a CSV from a particular source into a canonical data format"
-    trades_csv = [t for t in trades_csv if t["Type"] == "Market"]
+    trades_csv = filter(lambda t: t["Type"] == "Market", trades_csv)
     trades_list = []
 
-    symbols_dict = {'BTC': 'XXBT', 'EUR': 'ZEUR'}
     for trade in trades_csv:
         print(trade)
         ordertype = 'market'
@@ -108,7 +108,7 @@ def _format_csv_from_bitstamp(trades_csv):
         tradetype = trade["Sub Type"].lower()
         curr1 = trade["Amount"].split(' ')[1]
         curr2 = trade["Value"].split(' ')[1]
-        pair = (symbols_dict[curr1], symbols_dict[curr2])
+        pair = (symbolmap[curr1], symbolmap[curr2])
         price = float(trade["Rate"].split(' ')[0])
         cost = float(trade["Value"].split(' ')[0])
         fee = float(trade["Fee"].split(' ')[0])
@@ -135,7 +135,7 @@ def _format_csv_from_lbtc(trades_csv):
     trades_list = []
     for trade in trades_csv:
         time = dateutil.parser.parse(trade[' Created']).replace(tzinfo=None)
-        
+
         if trade[' Received'] != "":
             tradetype = 'buy'
             vol = float(trade[' Received'])
@@ -426,7 +426,7 @@ def _swedish_taxes(trades, deposits):
     cc = CurrencyConverter()
     asset_cost = defaultdict(int)
     asset_vol = defaultdict(int)
-    profits = defaultdict(lambda: [0,0])
+    profits = defaultdict(lambda: [0, 0])
     for deposit in deposits:
         curr = deposit['asset']
         amount = deposit['amount']
@@ -465,8 +465,6 @@ def _swedish_taxes(trades, deposits):
             print(f"Negative volume of asset: {c2}")
             asset_vol[c2] = 0
             asset_cost[c2] = 0
-    # print(f"Profits: {profits[0]}")
-    # print(f"Losses: {profits[1]}")
     print(profits)
 
 
