@@ -438,16 +438,18 @@ def _swedish_taxes(trades, deposits):
 
     for trade in trades:
         pair = trade["pair"]
+        cost = trade["cost"]
         if trade["type"] == "sell":
             pair = reversed(pair)
+            cost = trade["vol"]
         c1, c2 = pair
 
         # Calculate cost in SEK
-        cost = cc.convert(trade["cost_usd"], "USD", "SEK", date=next_weekday(trade["time"]))
+        cost_sek = cc.convert(trade["cost_usd"], "USD", "SEK", date=next_weekday(trade["time"]))
 
         print(f"buy {c1} / {c2}", '|', f"sell {c2} / {c1}")
         asset_vol[c1] += trade["vol"]
-        asset_cost[c1] += cost
+        asset_cost[c1] += cost_sek
         print("{:<5}".format(trade["type"].upper()), f"vol: {trade['vol']}, cost: {trade['cost']}, price: {trade['price']}")
 
         # Calculate average price in SEK
@@ -455,10 +457,10 @@ def _swedish_taxes(trades, deposits):
             print(f"No prior knowledge of asset: {c2}")
         avg_price = asset_cost[c2] / (asset_vol[c2] or 1)
 
-        profit = cost - trade["cost"] * avg_price
+        profit = cost_sek - cost * avg_price
         print(f"profit: {profit} SEK")
         asset_vol[c2] -= trade["vol"]
-        asset_cost[c2] -= cost
+        asset_cost[c2] -= cost_sek
         year = trade["time"].year
         if profit > 0:
             profits[year][0] += profit
