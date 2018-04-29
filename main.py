@@ -429,11 +429,13 @@ def _swedish_taxes(trades, deposits):
     profits = defaultdict(lambda: [0, 0])
     for deposit in deposits:
         curr = deposit['asset']
+        if curr[0] == 'X':
+            continue
         amount = deposit['amount']
-        if curr[0] != 'X':
-            cost = cc.convert(amount, curr[1:], "SEK", date=next_weekday(deposit["time"]))
+        cost = cc.convert(amount, curr[1:], "SEK", date=next_weekday(deposit["time"]))
         asset_cost[curr] += cost
         asset_vol[curr] += amount
+
     for trade in trades:
         pair = trade["pair"]
         if trade["type"] == "sell":
