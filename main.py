@@ -430,7 +430,8 @@ def _swedish_taxes(trades, deposits):
     for deposit in deposits:
         curr = deposit['asset']
         amount = deposit['amount']
-        cost = cc.convert(amount, curr[1:], "SEK", date=next_weekday(deposit["time"]))
+        if curr[0] != 'X':
+            cost = cc.convert(amount, curr[1:], "SEK", date=next_weekday(deposit["time"]))
         asset_cost[curr] += cost
         asset_vol[curr] += amount
     for trade in trades:
