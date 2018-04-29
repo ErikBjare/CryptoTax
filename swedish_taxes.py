@@ -27,10 +27,8 @@ def swedish_taxes(trades, deposits):
         # Calculate cost in SEK
         cost_sek = fiatconvert(trade["cost_usd"], "USD", "SEK", trade["time"])
 
-        print(f"buy {c1} / {c2}", '|', f"sell {c2} / {c1}")
         asset_vol[c1] += trade["vol"]
         asset_cost[c1] += cost_sek
-        print("{:<5}".format(trade["type"].upper()), f"vol: {trade['vol']}, cost: {trade['cost']}, price: {trade['price']}")
 
         # Calculate average price in SEK
         if c2 not in asset_vol:
@@ -38,7 +36,12 @@ def swedish_taxes(trades, deposits):
         avg_price = asset_cost[c2] / (asset_vol[c2] or 1)
 
         profit = cost_sek - cost * avg_price
-        print(f"profit: {profit} SEK")
+        print(f"profit: {profit:>5.2f} SEK",
+              "\t{:<4}".format(trade["type"].upper()),
+              f"vol: {'{:4.4}'.format(trade['vol']):>10}",
+              ",{:>15}".format(f"cost: {trade['cost']:>4.4}"),
+              f"price: {trade['price']:>4.4}, avg_price[{c2}]: {avg_price:>4.4}",
+              f"(buy {c1}/{c2} | sell {c2}/{c1})")
         asset_vol[c2] -= trade["vol"]
         asset_cost[c2] -= cost_sek
         year = trade["time"].year
@@ -50,7 +53,7 @@ def swedish_taxes(trades, deposits):
             print(f"Negative volume of asset: {c2}")
             asset_vol[c2] = 0
             asset_cost[c2] = 0
-        print()
+    print('-'*80)
     for (year, profit) in profits.items():
         print(f"{year}: ", "Profit: {:>20.20f} Loss: {:>20.20f}".format(*profit))
 
