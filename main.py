@@ -445,17 +445,17 @@ def _swedish_taxes(trades, deposits):
         # Calculate cost in SEK
         cost = cc.convert(trade["cost_usd"], "USD", "SEK", date=next_weekday(trade["time"]))
 
-        print(f"buy {c1} / {c2}")
+        print(f"buy {c1} / {c2}", '|', f"sell {c2} / {c1}")
         asset_vol[c1] += trade["vol"]
         asset_cost[c1] += cost
+        print("{:<5}".format(trade["type"].upper()), f"vol: {trade['vol']}, cost: {trade['cost']}, price: {trade['price']}")
 
-        print(f"sell {c2} / {c1}")
         # Calculate average price in SEK
         if c2 not in asset_vol:
             print(f"No prior knowledge of asset: {c2}")
         avg_price = asset_cost[c2] / (asset_vol[c2] or 1)
 
-        profit = cost - trade["vol"] * avg_price
+        profit = cost - trade["cost"] * avg_price
         print(f"profit: {profit} SEK")
         asset_vol[c2] -= trade["vol"]
         asset_cost[c2] -= cost
@@ -468,7 +468,9 @@ def _swedish_taxes(trades, deposits):
             print(f"Negative volume of asset: {c2}")
             asset_vol[c2] = 0
             asset_cost[c2] = 0
-    print(profits)
+        print()
+    for (year, profit) in profits.items():
+        print(f"{year}: ", "Profit: {:>20.20f} Loss: {:>20.20f}".format(*profit))
 
 
 def _format_deposits_kraken(ledger):
