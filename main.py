@@ -9,7 +9,7 @@ import dateutil.parser
 from pathlib import Path
 from copy import copy, deepcopy
 
-from util import fiatconvert
+from util import fiatconvert, canonical_symbol
 
 # import sqlite3
 # connection = sqlite3.connect(':memory:')
@@ -61,28 +61,13 @@ def _load_incoming_balances() -> List[Dict[str, Any]]:
         return []
 
 
-symbolmap = {
-    "XXBTC": "XXBT",
-    "XBT": "XXBT",
-    "XXDG": "XXDG",
-    "ETH": "XETH",
-    "BTC": "XXBT",
-    "BCH": "XBCH",
-    "GNO": "XGNO",
-    "EOS": "XEOS",
-    "STR": "XXLM",
-    "SC": "XXSC",
-    "EUR": "ZEUR"
-}
-
-
 def _format_csv_from_kraken(trades_csv):
     "Format a CSV from a particular source into a canonical data format"
     for trade in trades_csv:
         # Kraken has really weird pair formatting...
         pairlen = int(len(trade["pair"]) / 2)
         trade["pair"] = (trade["pair"][:pairlen], trade["pair"][pairlen:])
-        trade["pair"] = tuple(map(lambda symbol: symbolmap.get(symbol, symbol), trade["pair"]))
+        trade["pair"] = tuple(map(canonical_symbol, trade["pair"]))
 
         trade["time"] = dateutil.parser.parse(trade["time"])
         trade["price"] = float(trade["price"])
