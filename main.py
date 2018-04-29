@@ -4,12 +4,12 @@ from typing import List, Dict, Any
 from functools import reduce
 from itertools import groupby
 from collections import defaultdict
-from datetime import datetime, date, timedelta
+from datetime import datetime, date
+import dateutil.parser
 from pathlib import Path
 from copy import copy, deepcopy
-from currency_converter import CurrencyConverter
 
-import dateutil.parser
+from util import fiatconvert
 
 # import sqlite3
 # connection = sqlite3.connect(':memory:')
@@ -229,14 +229,13 @@ def _reduce_trades(trades):
 def _calc_cost_usd(trades):
     base_currencies = ['XXBT', 'XETH', 'XXLM']
     usd_price_csv = {k: _load_price_csv2(k) for k in base_currencies}
-    cc = CurrencyConverter()
 
     for trade in trades:
         date = trade["time"].date().isoformat()
         val_cur = trade["pair"][1]
         if val_cur == "ZEUR":
             # Buy/sell something valued in EUR
-            trade["cost_usd"] = cc.convert(trade["cost"], "EUR", "USD", date=next_weekday(trade["time"]))
+            trade["cost_usd"] = fiatconvert(trade["cost"], "EUR", "USD", trade["time"])
 
         elif val_cur == "ZUSD":
             trade["cost_usd"] = trade["cost"]
@@ -415,67 +414,6 @@ def _print_balances(trades, year=None):
         print(f"{k.ljust(6)} {str(round(v, 3)).ljust(8)}")
 
 
-def next_weekday(date):
-    if date.weekday() > 4:
-        day_gap = 7 - date.weekday()
-        return date + timedelta(days=day_gap)
-    else:
-        return date
-
-
-def _swedish_taxes(trades, deposits):
-    cc = CurrencyConverter()
-    asset_cost = defaultdict(int)
-    asset_vol = defaultdict(int)
-    profits = defaultdict(lambda: [0, 0])
-    for deposit in deposits:
-        curr = deposit['asset']
-        if curr[0] == 'X':
-            continue
-        amount = deposit['amount']
-        cost = cc.convert(amount, curr[1:], "SEK", date=next_weekday(deposit["time"]))
-        asset_cost[curr] += cost
-        asset_vol[curr] += amount
-
-    for trade in trades:
-        pair = trade["pair"]
-        cost = trade["cost"]
-        if trade["type"] == "sell":
-            pair = reversed(pair)
-            cost = trade["vol"]
-        c1, c2 = pair
-
-        # Calculate cost in SEK
-        cost_sek = cc.convert(trade["cost_usd"], "USD", "SEK", date=next_weekday(trade["time"]))
-
-        print(f"buy {c1} / {c2}", '|', f"sell {c2} / {c1}")
-        asset_vol[c1] += trade["vol"]
-        asset_cost[c1] += cost_sek
-        print("{:<5}".format(trade["type"].upper()), f"vol: {trade['vol']}, cost: {trade['cost']}, price: {trade['price']}")
-
-        # Calculate average price in SEK
-        if c2 not in asset_vol:
-            print(f"No prior knowledge of asset: {c2}")
-        avg_price = asset_cost[c2] / (asset_vol[c2] or 1)
-
-        profit = cost_sek - cost * avg_price
-        print(f"profit: {profit} SEK")
-        asset_vol[c2] -= trade["vol"]
-        asset_cost[c2] -= cost_sek
-        year = trade["time"].year
-        if profit > 0:
-            profits[year][0] += profit
-        else:
-            profits[year][1] += profit
-        if asset_vol[c2] < 0:
-            print(f"Negative volume of asset: {c2}")
-            asset_vol[c2] = 0
-            asset_cost[c2] = 0
-        print()
-    for (year, profit) in profits.items():
-        print(f"{year}: ", "Profit: {:>20.20f} Loss: {:>20.20f}".format(*profit))
-
-
 def _format_deposits_kraken(ledger):
     deposits = filter(lambda x: x['type'] == 'deposit', ledger)
     for deposit in deposits:
@@ -493,7 +431,7 @@ def _format_deposits_bitstamp(trades):
         yield d
 
 
-def _load_deposits():
+def load_deposits():
     deposits = []
     kraken_ledger_filename = "data_private/kraken-ledgers.csv"
     if Path(kraken_ledger_filename).exists():
@@ -519,11 +457,16 @@ def _print_agg_trades(trades, year=None):
         _print_trade(t)
 
 
-def main():
-    """Prints a bunch of useful info"""
+def get_trades():
     trades = load_all_trades()
     trades = _reduce_trades(trades)
     trades = _calc_cost_usd(trades)
+    return trades
+
+
+def main():
+    """Prints a bunch of useful info"""
+    trades = get_trades()
     _print_trades(trades)
 
     print("\n# Cost basis per asset")
@@ -533,9 +476,6 @@ def main():
         trades_for_year = _filter_trades_by_time(trades, year)
         _print_balances(trades_for_year, year)
         _print_agg_trades(trades_for_year, year)
-
-    deposits = _load_deposits()
-    _swedish_taxes(trades, deposits)
 
 
 if __name__ == "__main__":
