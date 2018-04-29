@@ -92,6 +92,7 @@ def _format_csv_from_kraken(trades_csv):
         del trade["ordertxid"]
     return trades_csv
 
+
 def _format_csv_from_bitstamp(trades_csv):
     "Format a CSV from a particular source into a canonical data format"
     trades_csv = [t for t in trades_csv if t["Type"] == "Market"]
@@ -113,17 +114,18 @@ def _format_csv_from_bitstamp(trades_csv):
         fee = float(trade["Fee"].split(' ')[0])
 
         trades_list.append({'ordertype': ordertype,
-            'time': time,
-            'vol': vol,
-            'type': tradetype,
-            'pair': pair,
-            'price': price,
-            'cost': cost,
-            'fee': fee,
-            'margin': 0.0,
-            'misc': '',
-            'ledgers': None})
+                            'time': time,
+                            'vol': vol,
+                            'type': tradetype,
+                            'pair': pair,
+                            'price': price,
+                            'cost': cost,
+                            'fee': fee,
+                            'margin': 0.0,
+                            'misc': '',
+                            'ledgers': None})
     return trades_list
+
 
 def _format_csv_from_lbtc(trades_csv):
     trades_csv = [t for t in trades_csv if t[" TXtype"] == "Trade"]
@@ -135,11 +137,11 @@ def _format_csv_from_lbtc(trades_csv):
         time = dateutil.parser.parse(trade[' Created']).replace(tzinfo=None)
         
         if trade[' Received'] != "":
-          tradetype = 'buy'
-          vol = float(trade[' Received'])
+            tradetype = 'buy'
+            vol = float(trade[' Received'])
         else:
-          tradetype = 'sell'
-          vol = float(trade[' Sent'])
+            tradetype = 'sell'
+            vol = float(trade[' Sent'])
 
         price = price_history[time.strftime('%Y-%m-%d')]['high']
         cost = price * vol
@@ -147,17 +149,18 @@ def _format_csv_from_lbtc(trades_csv):
         pair = (curr1, curr2)
 
         trades_list.append({'ordertype': 'market',
-          'time': time,
-          'vol': vol,
-          'type': tradetype,
-          'pair': pair,
-          'price': price,
-          'cost': cost,
-          'fee': None,
-          'margin': None,
-          'misc': '',
-          'ledgers': None})
+                            'time': time,
+                            'vol': vol,
+                            'type': tradetype,
+                            'pair': pair,
+                            'price': price,
+                            'cost': cost,
+                            'fee': None,
+                            'margin': None,
+                            'misc': '',
+                            'ledgers': None})
     return trades_list
+
 
 def _format_csv_from_poloniex(trades_csv):
     "Format a CSV from a particular source into a canonical data format"
@@ -223,34 +226,22 @@ def _reduce_trades(trades):
 
 
 def _calc_cost_usd(trades):
-    btcusd_price_csv = _load_price_csv2("XXBT")
-    ethusd_price_csv = _load_price_csv2("XETH")
-    xlmusd_price_csv = _load_price_csv2("XXLM")
+    base_currencies = ['XXBT', 'XETH', 'XXLM']
+    usd_price_csv = {k: _load_price_csv2(k) for k in base_currencies}
     cc = CurrencyConverter()
-
-    # TODO: Use actual rates
-    eurusd_rate = 1.23
 
     for trade in trades:
         date = trade["time"].date().isoformat()
-        if trade["pair"][1] == "ZEUR":
+        val_cur = trade["pair"][1]
+        if val_cur == "ZEUR":
             # Buy/sell something valued in EUR
             trade["cost_usd"] = cc.convert(trade["cost"], "EUR", "USD", date=next_weekday(trade["time"]))
 
-        elif trade["pair"][1] == "ZUSD":
+        elif val_cur == "ZUSD":
             trade["cost_usd"] = trade["cost"]
 
-        elif trade["pair"][1] == "XXBT":
-            # Buy/sell something valued in BTC
-            trade["cost_usd"] = trade["cost"] * btcusd_price_csv[date]
-
-        elif trade["pair"][1] == "XETH":
-            # Buy/sell something valued in ETH
-            trade["cost_usd"] = trade["cost"] * ethusd_price_csv[date]
-
-        elif trade["pair"][1] == "XXLM":
-            # Buy/sell something valued in XLM
-            trade["cost_usd"] = trade["cost"] * xlmusd_price_csv[date]
+        elif val_cur in usd_price_csv:
+            trade["cost_usd"] = trade["cost"] * usd_price_csv[val_cur][date]
 
         else:
             print(f"Could not calculate USD cost for pair: {trade['pair']}, add support for {trade['pair'][1]}")
@@ -283,7 +274,11 @@ def _cost_basis_per_asset(trades):
 
 
 def _filter_trades_by_time(trades, year):
-    return list(filter(lambda t: datetime(year, 1, 1) <= t["time"] < datetime(year + 1, 1, 1), trades))
+    return list(filter(_trade_year_filter, trades))
+
+
+def _trade_year_filter(year):
+    return lambda t: datetime(year, 1, 1) <= t["time"] < datetime(year + 1, 1, 1)
 
 
 def test_filter_trades_by_time():
@@ -401,7 +396,7 @@ def load_all_trades():
         print("Found bitstamp trades!")
         trades_bitstamp_csv = _load_csv(bitstamp_trades_filename)
         trades.extend(_format_csv_from_bitstamp(trades_bitstamp_csv))
-    
+
     lbtc_trades_filename = "data_private/lbtc-trades.csv"
     if Path(lbtc_trades_filename).exists():
         print("Found lbtc trades!")
@@ -427,46 +422,73 @@ def next_weekday(date):
         return date
 
 
-def _swedish_taxes(trades):
+def _swedish_taxes(trades, deposits):
     cc = CurrencyConverter()
     asset_cost = defaultdict(int)
     asset_vol = defaultdict(int)
+    profits = defaultdict(lambda: [0,0])
+    for deposit in deposits:
+        curr = deposit['asset']
+        amount = deposit['amount']
+        cost = cc.convert(amount, curr[1:], "SEK", date=next_weekday(deposit["time"]))
+        asset_cost[curr] += cost
+        asset_vol[curr] += amount
     for trade in trades:
-        c1 = trade["pair"][0]
-        c2 = trade["pair"][1]
-        if trade["type"] == "buy":
-            # Calculate cost in SEK
-            cost = cc.convert(trade["cost_usd"], "USD", "SEK", date=next_weekday(trade["time"]))
-            if c1[0] == "X":
-                print("buy {} / {}".format(c1, c2))
-                asset_vol[c1] += trade["vol"]
-                asset_cost[c1] += cost
-            if c2[0] == "X":
-                print("sell {} / {}".format(c2, c1))
-                # Calculate average price in SEK
-                if c1 in asset_cost:
-                    avg_price = asset_cost[c2] / asset_vol[c2]
-                else:
-                    avg_price = 0
-                profit = cost - trade["vol"] * avg_price
-                print("profit: {} SEK".format(profit))
-                asset_vol[c2] -= trade["vol"]
-                asset_cost[c2] -= cost
-        elif trade["type"] == "sell":
-            if c1[0] == "X":
-                print("sell {} / {}".format(c1, c2))
-                if c1 in asset_cost:
-                    avg_price = asset_cost[c1] / asset_vol[c1]
-                else:
-                    avg_price = 0
-                profit = trade["cost_usd"] - trade["vol"] * avg_price
-                print("profit: {} SEK".format(profit))
-                asset_vol[c1] -= trade["vol"]
-                asset_cost[c1] -= cost
-            if c1[0] == "X":
-                print("buy {} / {}".format(c2, c1))
-                asset_vol[c2] += trade["vol"]
-                asset_cost[c2] += trade["cost_usd"]
+        pair = trade["pair"]
+        if trade["type"] == "sell":
+            pair = reversed(pair)
+        c1, c2 = pair
+
+        # Calculate cost in SEK
+        cost = cc.convert(trade["cost_usd"], "USD", "SEK", date=next_weekday(trade["time"]))
+
+        print(f"buy {c1} / {c2}")
+        asset_vol[c1] += trade["vol"]
+        asset_cost[c1] += cost
+
+        print(f"sell {c2} / {c1}")
+        # Calculate average price in SEK
+        if c2 not in asset_vol:
+            print(f"No prior knowledge of asset: {c2}")
+        avg_price = asset_cost[c2] / (asset_vol[c2] or 1)
+
+        profit = cost - trade["vol"] * avg_price
+        print(f"profit: {profit} SEK")
+        asset_vol[c2] -= trade["vol"]
+        asset_cost[c2] -= cost
+        year = trade["time"].year
+        if profit > 0:
+            profits[year][0] += profit
+        else:
+            profits[year][1] += profit
+        if asset_vol[c2] < 0:
+            print(f"Negative volume of asset: {c2}")
+            asset_vol[c2] = 0
+            asset_cost[c2] = 0
+    # print(f"Profits: {profits[0]}")
+    # print(f"Losses: {profits[1]}")
+    print(profits)
+
+
+def _format_deposits_kraken(ledger):
+    deposits = filter(lambda x: x['type'] == 'deposit', ledger)
+    for deposit in deposits:
+        deposit["time"] = dateutil.parser.parse(deposit["time"])
+        deposit["amount"] = float(deposit["amount"])
+        yield deposit
+
+
+def _load_deposits():
+    deposits = []
+    kraken_ledger_filename = "data_private/kraken-ledgers.csv"
+    if Path(kraken_ledger_filename).exists():
+        print("Found kraken ledgers!")
+        ledger_kraken_csv = _load_csv(kraken_ledger_filename)
+        deposits_kraken = _format_deposits_kraken(ledger_kraken_csv)
+        deposits.extend(deposits_kraken)
+
+    print(deposits)
+    return deposits
 
 
 def _print_agg_trades(trades, year=None):
@@ -491,7 +513,9 @@ def main():
         _print_balances(trades_for_year, year)
         _print_agg_trades(trades_for_year, year)
 
-    _swedish_taxes(trades)
+    deposits = _load_deposits()
+    _swedish_taxes(trades, deposits)
+
 
 if __name__ == "__main__":
     main()
