@@ -94,7 +94,7 @@ def _format_csv_from_bitstamp(trades_csv):
         tradetype = trade["Sub Type"].lower()
         curr1 = trade["Amount"].split(' ')[1]
         curr2 = trade["Value"].split(' ')[1]
-        pair = (symbolmap[curr1], symbolmap[curr2])
+        pair = (canonical_symbol(curr1), canonical_symbol(curr2))
         price = float(trade["Rate"].split(' ')[0])
         cost = float(trade["Value"].split(' ')[0])
         fee = float(trade["Fee"].split(' ')[0])
@@ -412,7 +412,7 @@ def _format_deposits_bitstamp(trades):
         d = dict()
         d["time"] = dateutil.parser.parse(deposit["Datetime"])
         d["amount"] = float(deposit["Amount"].split(' ')[0])
-        d["asset"] = deposit["Amount"].split(' ')[1]
+        d["asset"] = canonical_symbol(deposit["Amount"].split(' ')[1])
         yield d
 
 

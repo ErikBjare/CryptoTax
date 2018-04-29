@@ -15,6 +15,8 @@ def swedish_taxes(trades, deposits):
         cost = fiatconvert(amount, curr[1:], "SEK", deposit["time"])
         asset_cost[curr] += cost
         asset_vol[curr] += amount
+    print(asset_vol)
+    print(asset_cost)
 
     for trade in trades:
         pair = trade["pair"]
