@@ -96,6 +96,7 @@ def _format_csv_from_kraken(trades_csv):
 
 def _format_csv_from_bitstamp(trades_csv):
     "Format a CSV from a particular source into a canonical data format"
+    print(trades_csv)
     trades_csv = filter(lambda t: t["Type"] == "Market", trades_csv)
     trades_list = []
 
@@ -482,6 +483,15 @@ def _format_deposits_kraken(ledger):
         deposit["amount"] = float(deposit["amount"])
         yield deposit
 
+def _format_deposits_bitstamp(trades):
+    deposits = filter(lambda x: x['Type'] == 'Card Deposit', trades)
+    for deposit in deposits:
+        d = dict()
+        d["time"] = dateutil.parser.parse(deposit["Datetime"])
+        d["amount"] = float(deposit["Amount"].split(' ')[0])
+        d["asset"] = deposit["Amount"].split(' ')[1]
+        yield d
+
 
 def _load_deposits():
     deposits = []
@@ -492,7 +502,13 @@ def _load_deposits():
         deposits_kraken = _format_deposits_kraken(ledger_kraken_csv)
         deposits.extend(deposits_kraken)
 
-    print(deposits)
+    bitstamp_trades_filename = "data_private/bitstamp-trades.csv"
+    if Path(bitstamp_trades_filename).exists():
+        print("Found bitstamp deposits!")
+        trades_bitstamp_csv = _load_csv(bitstamp_trades_filename)
+        deposits_bitstamp = _format_deposits_bitstamp(trades_bitstamp_csv)
+        deposits.extend(deposits_bitstamp)
+
     return deposits
 
 
