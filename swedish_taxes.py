@@ -21,41 +21,46 @@ def swedish_taxes(trades, deposits):
     for trade in trades:
         pair = trade["pair"]
         cost = trade["cost"]
+        vol = trade["vol"]
         if trade["type"] == "sell":
             pair = reversed(pair)
             cost = trade["vol"]
+            vol = trade["cost"]
         c1, c2 = pair
 
         # Calculate cost in SEK
         cost_sek = fiatconvert(trade["cost_usd"], "USD", "SEK", trade["time"])
 
-        asset_vol[c1] += trade["vol"]
+        asset_vol[c1] += vol
         asset_cost[c1] += cost_sek
 
         # Calculate average price in SEK
-        if c2 not in asset_vol:
-            print(f"No prior knowledge of asset: {c2}")
+        know = '?' if c2 not in asset_vol else ' '
         avg_price = asset_cost[c2] / (asset_vol[c2] or 1)
 
         profit = cost_sek - cost * avg_price
-        print(f"profit: {profit:>5.2f} SEK",
-              "\t{:<4}".format(trade["type"].upper()),
-              f"vol: {'{:4.4}'.format(trade['vol']):>10}",
-              ",{:>15}".format(f"cost: {trade['cost']:>4.4}"),
-              f"price: {trade['price']:>4.4}, avg_price[{c2}]: {avg_price:>4.4}",
-              f"(buy {c1}/{c2} | sell {c2}/{c1})")
-        asset_vol[c2] -= trade["vol"]
+        asset_vol[c2] -= cost
         asset_cost[c2] -= cost_sek
         year = trade["time"].year
         if profit > 0:
             profits[year][0] += profit
         else:
             profits[year][1] += profit
+        neg = ' '
         if asset_vol[c2] < 0:
-            print(f"Negative volume of asset: {c2}")
+            neg = '!'
             asset_vol[c2] = 0
             asset_cost[c2] = 0
+        print(know, neg,
+              f"profit: {profit:+11.2f} SEK",
+              "\t{:<4}".format(trade["type"].upper()),
+              f"vol: {trade['vol']:8.2f}",
+              f"cost: {trade['cost']:8.2f}",
+              f"price: {trade['price']:8.2f}",
+              f"avg_price[{c2}]: {avg_price:10.2f} = {asset_cost[c2]:10.2f} / {asset_vol[c2]:10.2f}",
+              f"(buy {c1}/{c2} | sell {c2}/{c1})", sep=' | ')
     print('-'*80)
+    print()
     for (year, profit) in profits.items():
         print(f"{year}: ", "Profit: {:>20.20f} Loss: {:>20.20f}".format(*profit))
 
