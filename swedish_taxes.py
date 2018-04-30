@@ -15,8 +15,10 @@ def swedish_taxes(trades, deposits):
         cost = fiatconvert(amount, curr[1:], "SEK", deposit["time"])
         asset_cost[curr] += cost
         asset_vol[curr] += amount
-    print(asset_vol)
-    print(asset_cost)
+    for asset, vol in asset_vol.items():
+        print(asset, vol)
+    for asset, cost in asset_cost.items():
+        print(asset, cost)
 
     for trade in trades:
         pair = trade["pair"]
@@ -51,15 +53,18 @@ def swedish_taxes(trades, deposits):
             neg = '!'
             asset_vol[c2] = 0
             asset_cost[c2] = 0
-        print(know, neg,
-              f"profit: {profit:+11.2f} SEK",
-              "\t{:<4}".format(trade["type"].upper()),
-              f"vol: {trade['vol']:8.2f}",
-              f"cost: {trade['cost']:8.2f}",
-              f"price: {trade['price']:8.2f}",
-              f"avg_price[{c2}]: {avg_price:10.2f} = {asset_cost[c2]:10.2f} / {asset_vol[c2]:10.2f}",
-              f"(buy {c1}/{c2} | sell {c2}/{c1})", sep=' | ')
-    print('-'*80)
+        print(
+            f"{trade['time'].isoformat(sep=' ', timespec='minutes')}",
+            know, neg,
+            f"profit: {profit:+11.2f} SEK",
+            "\t{:<4}".format(trade["type"].upper()),
+            f"vol: {trade['vol']:8.2f}",
+            f"cost: {trade['cost']:8.2f}",
+            f"price: {trade['price']:8.2f}",
+            f"avg_price[{c2}]: {avg_price:10.2f} = {asset_cost[c2]:10.2f} / {asset_vol[c2]:10.2f}",
+            f"({c2[1:]} -> {c1[1:]})",
+            sep=' | ')
+    print('-'*183)
     print()
     for (year, profit) in profits.items():
         print(f"{year}: ", "Profit: {:>20.20f} Loss: {:>20.20f}".format(*profit))
