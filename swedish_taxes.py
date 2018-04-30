@@ -15,11 +15,19 @@ def swedish_taxes(trades, deposits):
         cost = fiatconvert(amount, curr[1:], "SEK", deposit["time"])
         asset_cost[curr] += cost
         asset_vol[curr] += amount
+
+    print()
+    print("Deposited volumes")
     for asset, vol in asset_vol.items():
         print(asset, vol)
+
+    print()
+    print("Costs")
     for asset, cost in asset_cost.items():
         print(asset, cost)
 
+    print()
+    print_header = True
     for trade in trades:
         pair = trade["pair"]
         cost = trade["cost"]
@@ -36,8 +44,8 @@ def swedish_taxes(trades, deposits):
         asset_vol[c1] += vol
         asset_cost[c1] += cost_sek
 
-        # Calculate average price in SEK
         know = '?' if c2 not in asset_vol else ' '
+        # Calculate average price in SEK
         avg_price = asset_cost[c2] / (asset_vol[c2] or 1)
 
         profit = cost_sek - cost * avg_price
@@ -48,23 +56,29 @@ def swedish_taxes(trades, deposits):
             profits[year][0] += profit
         else:
             profits[year][1] += profit
+
         neg = ' '
         if asset_vol[c2] < 0:
             neg = '!'
             asset_vol[c2] = 0
             asset_cost[c2] = 0
-        print(
-            f"{trade['time'].isoformat(sep=' ', timespec='minutes')}",
-            know, neg,
-            f"profit: {profit:+11.2f} SEK",
-            "\t{:<4}".format(trade["type"].upper()),
-            f"vol: {trade['vol']:8.2f}",
-            f"cost: {trade['cost']:8.2f}",
-            f"price: {trade['price']:8.2f}",
-            f"avg_price[{c2}]: {avg_price:10.2f} = {asset_cost[c2]:10.2f} / {asset_vol[c2]:10.2f}",
-            f"({c2[1:]} -> {c1[1:]})",
-            sep=' | ')
-    print('-'*183)
+        row = [f"{trade['time'].isoformat(sep=' ', timespec='minutes')}",
+               know, neg,
+               f"{profit:+10.2f} SEK",
+               f"{trade['type'].upper():<4}",
+               f"{trade['vol']:8.2f}",
+               f"{trade['cost']:8.2f}",
+               f"{trade['price']:8.2f}",
+               f"{avg_price:10.2f} {c2[1:]} = {asset_cost[c2]:10.2f} / {asset_vol[c2]:10.2f}",
+               f"({c2[1:]} -> {c1[1:]})"]
+        if print_header:
+            print_header = False
+            header = ['time', '', '', 'profit', 'type', 'vol', 'cost', 'price', 'avg_price', '']
+            header_str = " | ".join(("{{:>{}}}".format(l)).format(h.upper()) for h, l in zip(header, (len(r) for r in row)))
+            print(header_str)
+            print('-'*len(header_str))
+        print(" | ".join(row))
+    print('-'*140)
     print()
     for (year, profit) in profits.items():
         print(f"{year}: ", "Profit: {:>20.20f} Loss: {:>20.20f}".format(*profit))
