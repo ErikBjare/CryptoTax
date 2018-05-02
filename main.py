@@ -153,7 +153,7 @@ def _format_csv_from_poloniex(trades_csv):
     "Format a CSV from a particular source into a canonical data format"
     for trade in trades_csv:
         trade["pair"] = trade.pop("Market").split("/")
-        trade["pair"] = tuple(map(lambda symbol: symbolmap[symbol] if symbol in symbolmap else symbol, trade["pair"]))
+        trade["pair"] = tuple(map(canonical_symbol, trade["pair"]))
         trade["type"] = trade.pop("Type").lower()
 
         trade["time"] = dateutil.parser.parse(trade.pop("Date"))
