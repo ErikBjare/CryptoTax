@@ -174,6 +174,8 @@ def _print_trades(trades, n=None):
 
 
 def _sum_trades(t1, t2):
+    assert t1["type"] == t2["type"]
+    assert t1["pair"] == t2["pair"]
     # Price becomes volume-weighted average
     t1["price"] = (t1["price"] * t1["vol"] + t2["price"] * t2["vol"]) / (t1["vol"] + t2["vol"])
     # Volume becomes sum of trades
@@ -201,7 +203,8 @@ def _reduce_trades(trades):
         else:
             last = processed[-1]
             if last["time"].date() == next["time"].date() and \
-               last["pair"] == next["pair"]:
+               last["pair"] == next["pair"] and \
+               last["type"] == next["type"]:
                 processed[-1] = _sum_trades(last, next)
             else:
                 processed.append(next)
@@ -361,13 +364,14 @@ def _aggregate_trades(trades):
 
 
 def _print_trade_header():
-    print(f"{'Pair'.ljust(12)}  {'type'.ljust(5)}  {'vol'.ljust(10)}  {'cost_usd'.ljust(10)}  {'cost_usd/unit'.ljust(12)}")
+    print(f"{'Pair'.ljust(12)}  {'type'.ljust(5)}  {'vol'.ljust(10)}  {'cost'.ljust(10)}  {'cost_usd'.ljust(10)}  {'cost_usd/unit'.ljust(12)}")
 
 
 def _print_trade(t):
     print(f"{' / '.join(t['pair']).ljust(12)}  " +
           f"{t['type'].ljust(5)}  " +
           f"{str(round(t['vol'], 3)).ljust(10)}  " +
+          f"{str(round(t['cost'], 3)).ljust(11)} " +
           f"${str(int(round(t['cost_usd']))).ljust(10)} " +
           f"${str(round(t['cost_usd']/t['vol'], 3)).ljust(10)}")
 
