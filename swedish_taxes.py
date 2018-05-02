@@ -3,16 +3,8 @@ from main import get_trades, load_deposits
 from util import fiatconvert
 
 
-class Table(object):
-
-    """Docstring for Table. """
-
+class Table:
     def __init__(self, header, _format=None):
-        """TODO: to be defined1.
-
-        :header: TODO
-
-        """
         if _format:
             self._format = {k: v for k, v in zip(header, _format)}
         else:
@@ -99,7 +91,7 @@ def swedish_taxes(trades, deposits):
         # Calculate average price in SEK
         avg_price = asset_cost[fro] / (asset_vol[fro] or 1)
 
-        profit = cost_sek - cost * avg_price
+        profit = cost_sek - cost * max([0, avg_price])
         asset_vol[fro] -= cost
         asset_sold[fro] += cost
         asset_cost[fro] -= cost_sek
@@ -115,7 +107,7 @@ def swedish_taxes(trades, deposits):
         if asset_vol[fro] < 0:
             asset_vol[fro] = 0
             asset_cost[fro] = 0
-        t_table['time'] = trade['time']
+        t_table['time'] = trade['time'].replace(microsecond=0)
         t_table['profit'] = profit
         t_table['type'] = trade['type']
         t_table['vol'] = trade['vol']

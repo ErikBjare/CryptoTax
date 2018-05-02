@@ -82,15 +82,12 @@ def _format_csv_from_kraken(trades_csv):
 
 def _format_csv_from_bitstamp(trades_csv):
     "Format a CSV from a particular source into a canonical data format"
-    print(trades_csv)
     trades_csv = filter(lambda t: t["Type"] == "Market", trades_csv)
     trades_list = []
 
     for trade in trades_csv:
-        print(trade)
         ordertype = 'market'
         time = dateutil.parser.parse(trade["Datetime"])
-        print(time)
         vol = float(trade['Amount'].split(' ')[0])
         tradetype = trade["Sub Type"].lower()
         curr1 = trade["Amount"].split(' ')[1]
@@ -232,6 +229,9 @@ def _calc_cost_usd(trades):
         else:
             print(f"Could not calculate USD cost for pair: {trade['pair']}, add support for {trade['pair'][1]}")
             trade["cost_usd"] = None
+            continue
+
+        trade["cost_sek"] = fiatconvert(trade["cost_usd"], "USD", "SEK", trade["time"])
     return trades
 
 
@@ -260,11 +260,7 @@ def _cost_basis_per_asset(trades):
 
 
 def _filter_trades_by_time(trades, year):
-    return list(filter(_trade_year_filter, trades))
-
-
-def _trade_year_filter(year):
-    return lambda t: datetime(year, 1, 1) <= t["time"] < datetime(year + 1, 1, 1)
+    return list(filter(lambda t: datetime(year, 1, 1) <= t["time"] < datetime(year + 1, 1, 1), trades))
 
 
 def test_filter_trades_by_time():
@@ -320,8 +316,26 @@ def test_normalize_trade_type():
     assert t2norm["cost"] == 8
 
 
+def _calculate_delta(trades: List[dict]) -> Dict[str, int]:
+    d = defaultdict(lambda: defaultdict(int))
+    for t in trades:
+        t = _normalize_trade_type(t)
+        d[t["pair"][0]]["balance"] += t["vol"]
+        d[t["pair"][1]]["balance"] -= t["cost"]
+
+        d[t["pair"][0]]["cost_usd"] += t["cost_usd"]
+        d[t["pair"][1]]["cost_usd"] -= t["cost_usd"]
+
+        d[t["pair"][0]]["cost_sek"] += t["cost_sek"]
+        d[t["pair"][1]]["cost_sek"] -= t["cost_sek"]
+
+    return d
+
+
 def _calculate_inout_balances(trades: List[dict],
-                              balances: Dict[str, int] = defaultdict(lambda: 0)) -> Dict[str, int]:
+                              balances: Dict[str, int] = None) -> Dict[str, int]:
+    if not balances:
+        balances = defaultdict(lambda: 0)
     for t in trades:
         t = _normalize_trade_type(t)
         balances[t["pair"][0]] += t["vol"]
@@ -391,10 +405,10 @@ def load_all_trades():
 
 
 def _print_balances(trades, year=None):
-    balances = _calculate_inout_balances(trades)
+    delta = _calculate_delta(trades)
     print(f"\n# Balance diff {f'for {year}' if year else ''}")
-    for k, v in balances.items():
-        print(f"{k.ljust(6)} {str(round(v, 3)).ljust(8)}")
+    for k, d in delta.items():
+        print(f"{k.ljust(6)} {str(round(d['balance'], 3)).ljust(12)} ${str(int(round(d['cost_usd'], 0))).ljust(12)} {(str(int(round(d['cost_sek'], 0))) + 'kr').ljust(12)}")
 
 
 def _format_deposits_kraken(ledger):
@@ -405,7 +419,7 @@ def _format_deposits_kraken(ledger):
         yield deposit
 
 def _format_deposits_bitstamp(trades):
-    deposits = filter(lambda x: x['Type'] == 'Card Deposit', trades)
+    deposits = filter(lambda x: 'Deposit' in x['Type'], trades)
     for deposit in deposits:
         d = dict()
         d["time"] = dateutil.parser.parse(deposit["Datetime"])
@@ -429,6 +443,9 @@ def load_deposits():
         trades_bitstamp_csv = _load_csv(bitstamp_trades_filename)
         deposits_bitstamp = _format_deposits_bitstamp(trades_bitstamp_csv)
         deposits.extend(deposits_bitstamp)
+
+    if not deposits:
+        raise Exception("No deposits found, please import ledger data")
 
     return deposits
 
