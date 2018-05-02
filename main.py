@@ -7,6 +7,7 @@ from collections import defaultdict
 from datetime import datetime, date
 from pathlib import Path
 from copy import copy, deepcopy
+from math import isclose
 
 import dateutil.parser
 
@@ -238,10 +239,10 @@ def _normalize_trade_type(t):
     such that asset1 is always being bought.
     """
     t = copy(t)
-    assert t["vol"] == t["cost"] / t["price"]
+    assert isclose(t["vol"], t["cost"] / t["price"], rel_tol=1e-4)
     if t["type"] == "sell":
         t = _flip_pair(t)
-    assert t["vol"] == t["cost"] / t["price"]
+    assert isclose(t["vol"], t["cost"] / t["price"], rel_tol=1e-4)
     return t
 
 
@@ -268,14 +269,12 @@ def test_normalize_trade_type():
     assert t2norm["cost"] == 8
 
 
-def _calculate_inout_balances(balances, trades):
+def _calculate_inout_balances(trades: List[dict],
+                              balances: Dict[str, int] = defaultdict(lambda: 0)) -> Dict[str, int]:
     for t in trades:
-        if t["type"] == "buy":   # Buy asset1 in pair using asset2
-            balances[t["pair"][0]] += t["vol"]
-            balances[t["pair"][1]] -= t["cost"]
-        elif t["type"] == "sell":
-            balances[t["pair"][0]] -= t["vol"]
-            balances[t["pair"][1]] += t["cost"]
+        t = _normalize_trade_type(t)
+        balances[t["pair"][0]] += t["vol"]
+        balances[t["pair"][1]] -= t["cost"]
 
     return balances
 
@@ -327,8 +326,7 @@ def load_all_trades():
 
 
 def _print_balances(trades, year=None):
-    balances = defaultdict(lambda: 0)  # type: Dict[str, int]
-    _calculate_inout_balances(balances, trades)
+    balances = _calculate_inout_balances(trades)
     print(f"\n# Balance diff {f'for {year}' if year else ''}")
     for k, v in balances.items():
         print(f"{k.ljust(6)} {str(round(v, 3)).ljust(8)}")
