@@ -45,9 +45,10 @@ def pptable(title, table):
 
 
 def swedish_taxes(trades, deposits):
+    ftblfmt = "{x:8.4f}"
     asset_cost = defaultdict(int)
     asset_vol = defaultdict(int)
-    asset_sold = defaultdict(int)
+    asset_sold = defaultdict(lambda: defaultdict(int))
     asset_profit = defaultdict(lambda: defaultdict(int))
     profits = defaultdict(lambda: [0, 0])
     for deposit in deposits:
@@ -68,7 +69,7 @@ def swedish_taxes(trades, deposits):
     pptable("Deposited", d_table)
 
     t_table = Table(['time', 'unknown warn', 'negative warn', 'profit', 'type', 'vol', 'cost', 'price', 'avg_price', 'pair'],
-                    _format=["{x}", "{x}", "{x}", "{x:+10.2f} SEK", "{x:<4}", "{x:8.2f}", "{x:8.2f}", "{x:8.2f}", "{x[0]:10.2f} {x[1]}", "({x[0]} -> {x[1]})"])
+                    _format=["{x}", "{x}", "{x}", "{x:+10.2f} SEK", "{x:<4}", ftblfmt, ftblfmt, ftblfmt, "{x[0]:10.2f} {x[1]}", "({x[0]} -> {x[1]})"])
     for trade in trades:
         t_table.new_row()
 
@@ -92,10 +93,10 @@ def swedish_taxes(trades, deposits):
         avg_price = asset_cost[fro] / (asset_vol[fro] or 1)
 
         profit = cost_sek - cost * max([0, avg_price])
-        asset_vol[fro] -= cost
-        asset_sold[fro] += cost
-        asset_cost[fro] -= cost_sek
         year = trade["time"].year
+        asset_vol[fro] -= cost
+        asset_sold[year][fro] += cost
+        asset_cost[fro] -= cost_sek
         asset_profit[year][fro] += profit
         if fro[0] == 'X':
             if profit > 0:
@@ -123,19 +124,19 @@ def swedish_taxes(trades, deposits):
         profit_table['year'] = year
         profit_table['profit'] = f"{profit[0]:>20.20f}"
         profit_table['loss'] = f"{profit[1]:>20.20f}"
-    pptable("Total profits",profit_table)
+    pptable("Total profits", profit_table)
 
     for (year, ap) in asset_profit.items():
         asset_table = Table(['asset', 'profit', 'sold_vol', 'final_vol', 'total_cost', 'avg_price'],
-                            _format=["{x}", "{x:+10.2f} SEK", "{x:8.2f}", "{x:8.2f}", "{x:8.2f}", "{x:8.2f}"])
+                            _format=["{x}", "{x:+10.2f} SEK", ftblfmt, ftblfmt, ftblfmt, ftblfmt])
         for (asset, profit) in ap.items():
             asset_table.new_row()
             asset_table['asset'] = asset
             asset_table['profit'] = profit
-            asset_table['sold_vol'] = asset_sold[asset]
+            asset_table['sold_vol'] = asset_sold[year][asset]
             asset_table['final_vol'] = asset_vol[asset]
             asset_table['total_cost'] = asset_cost[asset]
-            asset_table['avg_price'] = asset_cost[asset] / (asset_vol[asset] or float('NaN'))
+            asset_table['avg_price'] = 0 if not asset_cost[asset] else asset_cost[asset]  / asset_vol[asset]
         pptable(f"Profits {year}", asset_table)
 
 
