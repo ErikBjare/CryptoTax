@@ -444,7 +444,7 @@ def _print_agg_trades(trades, year=None):
 
 def get_trades():
     trades = load_all_trades()
-    trades = _reduce_trades(trades)
+    #trades = _reduce_trades(trades)
     trades = _calc_cost_usd(trades)
     return trades
 
