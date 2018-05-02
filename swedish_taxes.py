@@ -53,6 +53,7 @@ def pptable(title, table):
 
 
 def swedish_taxes(trades, deposits):
+    ftblfmt = "{x:8.4f}"
     asset_cost = defaultdict(int)
     asset_vol = defaultdict(int)
     asset_sold = defaultdict(int)
@@ -76,7 +77,7 @@ def swedish_taxes(trades, deposits):
     pptable("Deposited", d_table)
 
     t_table = Table(['time', 'unknown warn', 'negative warn', 'profit', 'type', 'vol', 'cost', 'price', 'avg_price', 'pair'],
-                    _format=["{x}", "{x}", "{x}", "{x:+10.2f} SEK", "{x:<4}", "{x:8.2f}", "{x:8.2f}", "{x:8.2f}", "{x[0]:10.2f} {x[1]}", "({x[0]} -> {x[1]})"])
+                    _format=["{x}", "{x}", "{x}", "{x:+10.2f} SEK", "{x:<4}", ftblfmt, ftblfmt, ftblfmt, "{x[0]:10.2f} {x[1]}", "({x[0]} -> {x[1]})"])
     for trade in trades:
         t_table.new_row()
 
@@ -135,7 +136,7 @@ def swedish_taxes(trades, deposits):
 
     for (year, ap) in asset_profit.items():
         asset_table = Table(['asset', 'profit', 'sold_vol', 'final_vol', 'total_cost', 'avg_price'],
-                            _format=["{x}", "{x:+10.2f} SEK", "{x:8.2f}", "{x:8.2f}", "{x:8.2f}", "{x:8.2f}"])
+                            _format=["{x}", "{x:+10.2f} SEK", ftblfmt, ftblfmt, ftblfmt, ftblfmt])
         for (asset, profit) in ap.items():
             asset_table.new_row()
             asset_table['asset'] = asset
