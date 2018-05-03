@@ -1,0 +1,1 @@
+currencyconverter>=0.13.3

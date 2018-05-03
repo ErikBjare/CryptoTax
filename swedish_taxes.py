@@ -1,6 +1,8 @@
 from collections import defaultdict
-from main import get_trades, load_deposits
+from main import get_trades
 from util import fiatconvert
+
+import load_data
 
 
 class Table:
@@ -142,5 +144,5 @@ def swedish_taxes(trades, deposits):
 
 if __name__ == "__main__":
     trades = get_trades()
-    deposits = load_deposits()
+    deposits = load_data.load_deposits()
     swedish_taxes(trades, deposits)
