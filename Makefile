@@ -12,3 +12,7 @@ get_data:
 
 test:
 	python3 -m pytest -v *.py
+
+check:
+	mypy --ignore-missing-imports *.py
+	flake8 --ignore=E225,E265,E402,E501

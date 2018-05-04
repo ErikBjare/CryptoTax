@@ -1,16 +1,11 @@
 import csv
 import pickle
 from typing import List, Dict, Any
-from functools import reduce
-from itertools import groupby
-from collections import defaultdict
-from datetime import datetime, date
+from datetime import date
 import dateutil.parser
 from pathlib import Path
-from copy import copy, deepcopy
-from math import isclose
 
-from util import fiatconvert, canonical_symbol
+from util import canonical_symbol
 
 
 def _load_csv(filepath) -> List[Dict[str, Any]]:
@@ -195,6 +190,7 @@ def _format_deposits_kraken(ledger):
         deposit["time"] = dateutil.parser.parse(deposit["time"])
         deposit["amount"] = float(deposit["amount"])
         yield deposit
+
 
 def _format_deposits_bitstamp(trades):
     deposits = filter(lambda x: 'Deposit' in x['Type'], trades)

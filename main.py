@@ -1,27 +1,26 @@
-import csv
-import pickle
 from typing import List, Dict, Any
 from functools import reduce
 from itertools import groupby
 from collections import defaultdict
-from datetime import datetime, date
-import dateutil.parser
-from pathlib import Path
+from datetime import datetime
 from copy import copy, deepcopy
 from math import isclose
 
-from util import fiatconvert, canonical_symbol
+from util import fiatconvert
 import load_data
 
 
-def _print_trades(trades, n=None):
+Trade = Dict[str, Any]
+
+
+def _print_trades(trades: List[Trade], n=None):
     h = dict(zip(trades[0].keys(), trades[0].keys()))
     print(f"{h['time']:10}  {h['pair']:12.12}  {h['type']:4.4}  {h['price']:12}  {h['vol']:9}  {h['cost']:12.10}  {h['cost_usd']:14.14}")
     for d in (trades[:n] if n else trades):
         print(f"{d['time'].isoformat():.10}  {' / '.join(d['pair']):12}  {d['type']:4.4}  {d['price']:12.6}  {d['vol']:9.6}  {d['cost']:12.6}  {str(d['cost_usd']):14.14}")
 
 
-def _sum_trades(t1, t2):
+def _sum_trades(t1: Trade, t2: Trade):
     assert t1["type"] == t2["type"]
     assert t1["pair"] == t2["pair"]
     # Price becomes volume-weighted average
@@ -43,7 +42,7 @@ def test_sum_trades():
     assert t3["cost"] == 3
 
 
-def _reduce_trades(trades):
+def _reduce_trades(trades: List[Trade]):
     """Merges consequtive trades in the same pair on the same day"""
     def r(processed, next):
         if len(processed) == 0:
@@ -60,7 +59,7 @@ def _reduce_trades(trades):
     return reduce(r, trades, [])
 
 
-def _calc_cost_usd(trades):
+def _calc_cost_usd(trades: List[Trade]):
     base_currencies = ['XXBT', 'XETH', 'XXLM']
     usd_price_csv = {k: load_data._load_price_csv2(k) for k in base_currencies}
 
@@ -86,9 +85,9 @@ def _calc_cost_usd(trades):
     return trades
 
 
-def _cost_basis_per_asset(trades):
-    costbasis = defaultdict(lambda: 0)
-    vol = defaultdict(lambda: 0)
+def _cost_basis_per_asset(trades: List[Trade]) -> None:
+    costbasis = defaultdict(float)  # type: Dict[str, float]
+    vol = defaultdict(float)  # type: Dict[str, float]
 
     incoming = load_data._load_incoming_balances()
     if incoming:
@@ -110,7 +109,7 @@ def _cost_basis_per_asset(trades):
               f"${str(round(costbasis[asset]/vol[asset], 3)).ljust(8)}")
 
 
-def _filter_trades_by_time(trades, year):
+def _filter_trades_by_time(trades: List[Trade], year: int) -> List[Trade]:
     return list(filter(lambda t: datetime(year, 1, 1) <= t["time"] < datetime(year + 1, 1, 1), trades))
 
 
@@ -121,7 +120,7 @@ def test_filter_trades_by_time():
     assert 1 == len(_filter_trades_by_time([_t1, _t2], 2018))
 
 
-def _flip_pair(t):
+def _flip_pair(t: Trade) -> Trade:
     t = copy(t)
     assert t["type"] in ["buy", "sell"]
     t["type"] = "buy" if t["type"] == "sell" else "sell"
@@ -131,7 +130,7 @@ def _flip_pair(t):
     return t
 
 
-def _normalize_trade_type(t):
+def _normalize_trade_type(t: Trade) -> Trade:
     """
     Normalizes sell-trade t into a buy-trade by flipping the pair
     such that asset1 is always being bought.
@@ -167,8 +166,8 @@ def test_normalize_trade_type():
     assert t2norm["cost"] == 8
 
 
-def _calculate_delta(trades: List[dict]) -> Dict[str, int]:
-    d = defaultdict(lambda: defaultdict(int))
+def _calculate_delta(trades: List[Trade]) -> Dict[str, Dict[str, float]]:
+    d = defaultdict(lambda: defaultdict(float))  # type: Dict[str, Dict[str, float]]
     for t in trades:
         t = _normalize_trade_type(t)
         d[t["pair"][0]]["balance"] += t["vol"]
@@ -195,7 +194,7 @@ def _calculate_inout_balances(trades: List[dict],
     return balances
 
 
-def _aggregate_trades(trades):
+def _aggregate_trades(trades: List[Trade]) -> List[Trade]:
     def keyfunc(t):
         return tuple(list(t["pair"]) + [t["type"]])
 
@@ -211,11 +210,11 @@ def _aggregate_trades(trades):
     return list(sorted(agg_trades, key=lambda t: t["pair"]))
 
 
-def _print_trade_header():
+def _print_trade_header() -> None:
     print(f"{'Pair'.ljust(12)}  {'type'.ljust(5)}  {'vol'.ljust(10)}  {'cost'.ljust(10)}  {'cost_usd'.ljust(10)}  {'cost_usd/unit'.ljust(12)}")
 
 
-def _print_trade(t):
+def _print_trade(t) -> None:
     print(f"{' / '.join(t['pair']).ljust(12)}  " +
           f"{t['type'].ljust(5)}  " +
           f"{str(round(t['vol'], 3)).ljust(10)}  " +
@@ -224,21 +223,21 @@ def _print_trade(t):
           f"${str(round(t['cost_usd']/t['vol'], 3)).ljust(10)}")
 
 
-def _print_balances(trades, year=None):
+def _print_balances(trades: List[Trade], year=None) -> None:
     delta = _calculate_delta(trades)
     print(f"\n# Balance diff {f'for {year}' if year else ''}")
     for k, d in delta.items():
         print(f"{k.ljust(6)} {str(round(d['balance'], 3)).ljust(12)} ${str(int(round(d['cost_usd'], 0))).ljust(12)} {(str(int(round(d['cost_sek'], 0))) + 'kr').ljust(12)}")
 
 
-def _print_agg_trades(trades, year=None):
+def _print_agg_trades(trades: List[Trade], year=None) -> None:
     print(f"\n# Aggregate trades {f'for {year}' if year else ''}")
     _print_trade_header()
     for t in _aggregate_trades(trades):
         _print_trade(t)
 
 
-def get_trades():
+def get_trades() -> List[Trade]:
     trades = load_data.load_all_trades()
     trades = _reduce_trades(trades)
     trades = _calc_cost_usd(trades)
