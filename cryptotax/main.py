@@ -6,8 +6,8 @@ from datetime import datetime
 from copy import copy, deepcopy
 from math import isclose
 
-from util import fiatconvert
-import load_data
+from .util import fiatconvert
+from . import load_data
 
 
 Trade = Dict[str, Any]
