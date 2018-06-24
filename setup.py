@@ -15,5 +15,5 @@ setup(name="cryptotax",
       long_description="meh",
       author="Erik Bjäreholt",
       author_email="erik@bjareho.lt",
-      install_requires=requirements,
+      install_requires=requirements + test_requirements,
       packages=set(["cryptotax"]))
