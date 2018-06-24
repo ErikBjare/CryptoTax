@@ -4,7 +4,6 @@ python:
 
 install:
  - pip3 install pipenv
- - pipenv install
  - make install
 
 script:
