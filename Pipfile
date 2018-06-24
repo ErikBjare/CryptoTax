@@ -8,10 +8,12 @@ CurrencyConverter = ">=0.13.3"
 tabulate = "*"
 python-dateutil = "*"
 requests = "*"
+"beautifulsoup4" = "*"
 
 [dev-packages]
 mypy = "*"
 pytest = "*"
+"flake8" = "*"
 
 [requires]
 python_version = "3.6"
