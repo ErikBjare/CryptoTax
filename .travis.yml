@@ -3,7 +3,7 @@ python:
  - "3.6"
 
 install:
- - pip3 install pipenv
+ - pip3 install pipenv mypy pytest flake8
  - make install
 
 script:
