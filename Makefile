@@ -15,4 +15,4 @@ test:
 
 check:
 	mypy --ignore-missing-imports cryptotax *.py
-	flake8 --ignore=E225,E265,E402,E501
+	flake8 --ignore=E225,E265,E402,E501,F401,W391
