@@ -5,7 +5,7 @@ swedish-taxes:
 	python3 -m cryptotax.swedish_taxes
 
 install:
-	pip3 install --user . -r requirements.txt
+	pip3 install . -r requirements.txt
 
 get_data:
 	python3 download_data.py
