@@ -5,12 +5,12 @@ from datetime import date
 import dateutil.parser
 from pathlib import Path
 
-from util import canonical_symbol
+from .util import canonical_symbol
 
 
-def _load_csv(filepath) -> List[Dict[str, Any]]:
+def _load_csv(filepath, delimiter=',') -> List[Dict[str, Any]]:
     with open(filepath, "r") as csvfile:
-        reader = csv.reader(csvfile, delimiter=',')
+        reader = csv.reader(csvfile, delimiter=delimiter)
         header = next(reader)
         return list(dict(zip(header, row)) for row in reader)
 

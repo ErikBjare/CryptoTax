@@ -46,12 +46,15 @@ def parse_table(doc):
         elif cells:
             print(f"Incomplete row: {cells}")
 
-    d = {datetime.strptime(r["date"], "%b %d, %Y").date(): r for r in rows}
-    for k, v in d.items():
+    table = {datetime.strptime(r["date"], "%b %d, %Y").date(): r for r in rows}
+    for _date, v in table.items():
         v.pop("date")
         v.pop("market cap")
-        d[k] = {ohlc: float(d[k][ohlc].replace(",", "")) for ohlc in d[k]}
-    return d
+        table[_date] = {
+            ohlc.strip("*"): float(table[_date][ohlc].replace(",", ""))
+            for ohlc in table[_date]
+        }
+    return table
 
 
 def _save_table(currency, data):
@@ -64,7 +67,10 @@ def test_everything():
     data = load_data("bitcoin")
     tablebtc = parse_table(data.text)
 
-    assert all(k in tablebtc[date(2017, 1, 1)] for k in ["open", "high", "low", "close"])
+    d = date(2017, 1, 1)
+
+    print(tablebtc[d])
+    assert all(k in tablebtc[d] for k in ["open", "high", "low", "close"])
 
     data = load_data("ethereum")
     tableeth = parse_table(data.text)
@@ -72,7 +78,7 @@ def test_everything():
     assert tablebtc[date(2017, 1, 1)]["open"] != tableeth[date(2017, 1, 1)]["open"]
 
 
-if __name__ == "__main__":
+def main():
     # get_data("bitcoin")
     for currency in ["bitcoin", "ethereum", "stellar"]:
         print(f"Getting price history for {currency}...")
@@ -80,4 +86,6 @@ if __name__ == "__main__":
         table = parse_table(data.text)
         _save_table(currency, table)
 
-    # print(data.text)
+
+if __name__ == "__main__":
+    main()

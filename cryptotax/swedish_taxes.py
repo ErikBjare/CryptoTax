@@ -1,9 +1,9 @@
 from collections import defaultdict
-from main import get_trades
-from util import fiatconvert
 from typing import NamedTuple
 
-import load_data
+from .main import get_trades
+from .util import fiatconvert
+from . import load_data
 
 
 class Table:
