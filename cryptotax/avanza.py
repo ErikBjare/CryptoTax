@@ -18,7 +18,7 @@ def _load_data_avanza(filename="./data_private/avanza-transactions_utf8.csv"):
     for row in data:
         row["date"] = row.pop("Datum")
         ttype = row.pop("Typ av transaktion")
-        if type in _typ_to_type:
+        if ttype in _typ_to_type:
             row["type"] = _typ_to_type[ttype]
         else:
             # print(type)
@@ -41,8 +41,6 @@ def compute_balances(trades):
     profit = defaultdict(lambda: 0)
 
     for t in sorted(trades, key=lambda t: t['date']):
-        #print(t['asset'], t['type'],  t['volume'])
-
         if t["type"] == "buy":
             prev_cost = balances[t['asset']] * costavg[t['asset']]
             new_cost = t['volume'] * t['price']
