@@ -9,6 +9,8 @@ This is an attempt to fill those tax forms for you automatically (or at least he
 
 **NOTE:** This was primarily developed for use to file taxes in Sweden, which might lead to differences in how certain things are calculated or approached.
 
+[![Build Status](https://travis-ci.org/ErikBjare/CryptoTax.svg?branch=master)](https://travis-ci.org/ErikBjare/CryptoTax)
+
 ## WILL CONTAIN BUGS, ALWAYS CHECK THE END RESULT MANUALLY
 
 
