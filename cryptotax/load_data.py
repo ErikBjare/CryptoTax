@@ -35,7 +35,7 @@ def _load_price_csv2(symbol):
 def _load_pricehistory(symbol) -> Dict[date, Dict[str, float]]:
     """Returns a dict mapping from date to price"""
     with open(f"tmp/{symbol}-pricehistory.pickle", "rb") as f:
-        data = {k.isoformat(): v for k, v in pickle.load(f).items()}
+        data = {k.isoformat(): {kk.strip("*"): vv for kk, vv in v.items()} for k, v in pickle.load(f).items()}
         return data
 
 
