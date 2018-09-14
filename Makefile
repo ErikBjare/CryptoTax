@@ -4,6 +4,9 @@ run:
 swedish-taxes:
 	python3 -m cryptotax.swedish_taxes
 
+avanza:
+	python3 -m cryptotax.avanza
+
 install:
 	pip3 install . -r requirements.txt
 
