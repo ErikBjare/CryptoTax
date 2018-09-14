@@ -9,6 +9,10 @@ import matplotlib.pyplot as plt
 
 from .load_data import _load_csv
 
+
+# FIXME: Handle assets priced in USD/EUR correctly
+
+
 _typ_to_type = {
     "Insättning": "deposit",
     "Uttag": "withdrawal",
