@@ -131,7 +131,6 @@ def plot_holdings(txs: List[Dict]) -> None:
 
     plt.title("Value of holdings")
     plt.ylabel("SEK")
-    plt.ylim(0)
     plt.xlim(pd.Timestamp("2016-01-01"), pd.Timestamp.now())
     plt.legend()
     plt.show()
@@ -169,6 +168,7 @@ def asset_txs_to_dataframe(txs: List[Dict]) -> pd.DataFrame:
     df['balance'] = df['balance'].round(2)
     df['holdings'] = (df['balance'] * df['price']).round(2)
     df['purchase_cost'] = (df['balance'] * df['costavg']).round(2)
+    df['profit_unrealized'] = df['holdings'] - df['purchase_cost']
     return df
 
 

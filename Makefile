@@ -14,7 +14,7 @@ get_data:
 	python3 download_data.py
 
 test:
-	python3 -m pytest -v cryptotax/*.py
+	env $$(cat private.env) pipenv run python3 -m pytest -v cryptotax/main.py cryptotax/download_data.py cryptotax/openfigi.py
 
 check:
 	mypy --ignore-missing-imports cryptotax *.py
