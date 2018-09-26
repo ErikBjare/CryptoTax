@@ -1,6 +1,7 @@
 from collections import defaultdict
 from typing import Dict, Tuple, List, Any
 from copy import deepcopy
+from datetime import datetime, timedelta
 
 from tabulate import tabulate
 import pandas as pd
@@ -128,6 +129,16 @@ def plot_holdings(txs: List[Dict]) -> None:
         if not group_txs:
             continue
         df = asset_txs_to_dataframe(group_txs)
+        print(group)
+        isin_to_avanza_ids = {
+            "SE0010296574": 791709,  # Ethereum
+            "NO0010582984": 463161,  # DNB Global
+        }
+        if group in isin_to_avanza_ids:
+            from .avanza_api import get_history
+            h = get_history(isin_to_avanza_ids[group])
+            print(df.iloc[0])
+            df = _fill_with_daily_prices(df, dict((str(dt.date()), p) for dt, p in h))
 
         if round(df.iloc[-1]['balance']) != 0:
             plt.plot(df['holdings'], label=group_txs[0]['asset_name'])
@@ -151,9 +162,7 @@ def txs_to_dataframe(txs: List[Dict]) -> pd.DataFrame:
     return df
 
 
-def asset_txs_to_dataframe(txs: List[Dict]) -> pd.DataFrame:
-    df = txs_to_dataframe(txs)
-    df['profit'] = 0.0
+def _calc_costavg(df: pd.DataFrame) -> pd.DataFrame:
     df['costavg'] = df['price']
     df['balance'] = df['volume']
     for i, d in list(enumerate(df.index))[1:]:
@@ -169,6 +178,49 @@ def asset_txs_to_dataframe(txs: List[Dict]) -> pd.DataFrame:
         df.iloc[i, df.columns.get_loc('profit')] = df.iloc[i - 1]['profit']
         if df.iloc[i]['type'] == "sell":
             df.iloc[i, df.columns.get_loc('profit')] += -df.iloc[i]['volume'] * (df.iloc[i]['price'] - df.iloc[i]['costavg'])
+    return df
+
+
+def _fill_with_daily_prices(df: pd.DataFrame, pricehistory: Dict[str, float]) -> pd.DataFrame:
+    rows = []
+    for r1, r2 in [(df.iloc[i], df.iloc[i + 1]) for i in range(len(df) - 1)]:
+        start = r1.name
+        end = r2.name
+        dt = start
+        while dt + timedelta(days=1) < end:
+            dt += timedelta(days=1)
+            dtstr = dt.isoformat()[:10]
+            if dtstr in pricehistory:
+                rows.append({
+                    "date": dt,
+                    "price": pricehistory[dtstr],
+                    "balance": r1["balance"],
+                    "costavg": r1["costavg"],
+                    "volume": 0,
+                })
+    print(rows)
+    df = df.append(pd.DataFrame(rows).set_index("date")).sort_index()
+    df['holdings'] = (df['balance'] * df['price']).round(2)
+    df['purchase_cost'] = (df['balance'] * df['costavg']).round(2)
+    df['profit_unrealized'] = df['holdings'] - df['purchase_cost']
+    print(df)
+    return df
+
+
+def test_fill_with_daily_prices():
+    from .avanza_api import get_history
+    df = pd.DataFrame([
+        {"date": pd.Timestamp("2018-05-31"), "price": 1, "volume": 1, "balance": 1, "costavg": 1},
+        {"date": pd.Timestamp("2018-08-01"), "price": 2, "volume": -1, "balance": 0, "costavg": 1},
+    ]).set_index("date")
+    df = _fill_with_daily_prices(df, dict((str(dt.date()), p) for dt, p in get_history(463161)))
+    assert df.loc["2018-06-05"]["price"]
+
+
+def asset_txs_to_dataframe(txs: List[Dict]) -> pd.DataFrame:
+    df = txs_to_dataframe(txs)
+    df['profit'] = 0.0
+    df = _calc_costavg(df)
     df['balance'] = df['balance'].round(2)
     df['holdings'] = (df['balance'] * df['price']).round(2)
     df['purchase_cost'] = (df['balance'] * df['costavg']).round(2)
