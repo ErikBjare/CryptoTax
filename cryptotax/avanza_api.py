@@ -21,15 +21,16 @@ def get_history(oid: int, start=None, end=None):
                           "end": now.isoformat() + "Z",
                           "ta": []
                       }))
-    data = r.json()
-    for point in data["navigatorPoints"]:
+    data = r.json()["navigatorPoints"]
+    for point in data:
         point[0] = datetime.fromtimestamp(point[0] / 1000)
+    data = [p for p in data if p[1]]
     # print(data.keys())
     # print(data["navigatorPoints"][0])
     # print(data["navigatorPoints"][-1])
     # print(data["lastPrice"])
     # print(data["allowedResolutions"])
-    return data["navigatorPoints"]
+    return data
 
 
 def test_get_history():

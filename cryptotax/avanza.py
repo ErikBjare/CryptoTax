@@ -129,15 +129,17 @@ def plot_holdings(txs: List[Dict]) -> None:
         if not group_txs:
             continue
         df = asset_txs_to_dataframe(group_txs)
-        print(group)
         isin_to_avanza_ids = {
+            "SE0007126024": 563966,  # Bitcoin
             "SE0010296574": 791709,  # Ethereum
             "NO0010582984": 463161,  # DNB Global
+            "LU0099574567": 379,     # Fidelity Global Technology
+            "SE0000709123": 1933,    # Swedbank Robur Ny Teknik
+            "SE0009779705": 788394,  # Avanza Auto 6
         }
         if group in isin_to_avanza_ids:
             from .avanza_api import get_history
             h = get_history(isin_to_avanza_ids[group])
-            print(df.iloc[0])
             df = _fill_with_daily_prices(df, dict((str(dt.date()), p) for dt, p in h))
 
         if round(df.iloc[-1]['balance']) != 0:
@@ -146,7 +148,7 @@ def plot_holdings(txs: List[Dict]) -> None:
 
     plt.title("Value of holdings")
     plt.ylabel("SEK")
-    plt.xlim(pd.Timestamp("2016-01-01"), pd.Timestamp.now())
+    plt.xlim(pd.Timestamp("2017-01-01"), pd.Timestamp.now())
     plt.legend()
     plt.show()
 
@@ -190,20 +192,33 @@ def _fill_with_daily_prices(df: pd.DataFrame, pricehistory: Dict[str, float]) ->
         while dt + timedelta(days=1) < end:
             dt += timedelta(days=1)
             dtstr = dt.isoformat()[:10]
-            if dtstr in pricehistory:
-                rows.append({
-                    "date": dt,
-                    "price": pricehistory[dtstr],
-                    "balance": r1["balance"],
-                    "costavg": r1["costavg"],
-                    "volume": 0,
-                })
-    print(rows)
+            if dtstr not in pricehistory:
+                continue
+            rows.append({
+                "date": dt,
+                "price": pricehistory[dtstr],
+                "balance": r1["balance"],
+                "costavg": r1["costavg"],
+                "volume": 0,
+            })
+    now = datetime.now()
+    dt = end
+    while dt + timedelta(days=1) < now:
+        dt += timedelta(days=1)
+        dtstr = dt.isoformat()[:10]
+        if dtstr not in pricehistory:
+            continue
+        rows.append({
+            "date": dt,
+            "price": pricehistory[dtstr],
+            "balance": r2["balance"],
+            "costavg": r2["costavg"],
+            "volume": 0,
+        })
     df = df.append(pd.DataFrame(rows).set_index("date")).sort_index()
     df['holdings'] = (df['balance'] * df['price']).round(2)
     df['purchase_cost'] = (df['balance'] * df['costavg']).round(2)
     df['profit_unrealized'] = df['holdings'] - df['purchase_cost']
-    print(df)
     return df
 
 
