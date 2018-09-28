@@ -2,9 +2,14 @@ from datetime import datetime, timedelta
 import json
 
 import requests
+from joblib import Memory
+
+cachedir = '.joblibcache'
+memory = Memory(cachedir, verbose=0)
 
 
-def get_history(oid: int, start=None, end=None):
+@memory.cache
+def get_history(oid: int, start=None, end=None, cache=False):
     now = datetime.now()
     r = requests.post("https://www.avanza.se/ab/component/highstockchart/getchart/orderbook",
                       headers={"Content-Type": "application/json"},

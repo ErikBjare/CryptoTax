@@ -12,6 +12,7 @@ requests = "*"
 pandas = "*"
 pydash = "*"
 matplotlib = "*"
+joblib = "*"
 
 [dev-packages]
 mypy = "*"

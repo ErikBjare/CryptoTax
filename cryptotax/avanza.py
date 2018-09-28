@@ -30,6 +30,19 @@ _typ_to_type = {
 
 isin_registry = {}
 
+isin_to_avanza_ids = {
+    "SE0007126024": 563966,  # Bitcoin
+    "SE0010296574": 791709,  # Ethereum
+    "NO0010582984": 463161,  # DNB Global
+    "LU0099574567": 379,     # Fidelity Global Technology
+    "SE0000709123": 1933,    # Swedbank Robur Ny Teknik
+    "SE0009779705": 788394,  # Avanza Auto 6
+    "SE0008613939": 693994,  # Spiltan Globalfond Investmentbolag
+    "SE0004297927": 325406,  # Spiltan Aktiefond Investmentbolag
+    "SE0011527613": 878733,  # Avanza Global
+    "US0079031078": 529720,  # AMD
+}
+
 
 def _load_data_avanza(filename="./data_private/avanza-transactions_utf8.csv") -> List[Dict]:
     data = _load_csv(filename, delimiter=";")
@@ -102,47 +115,14 @@ def compute_balances(trades) -> Tuple[Dict[str, float], Dict[str, float], Dict[s
     return balances, costavg, profit
 
 
-def print_table(table) -> None:
-    from IPython.display import HTML, display
-    from tabulate import tabulate
-    display(HTML(tabulate(table, tablefmt='html')))
-
-
-def display_performance(balances, costavg, profit):
-    header = ["Asset", "Balance", "Profit", "Costavg"]
-    table = []
-    for asset in balances:
-        table.append([
-            asset,
-            round(balances[asset], 2),
-            round(profit[asset], 2),
-            round(costavg[asset], 2)
-        ])
-
-    print_table([header] + sorted(table, key=lambda r: -r[2]))
-    return table
-
-
 def plot_holdings(txs: List[Dict]) -> None:
     for group, group_txs in pydash.group_by(txs, lambda tx: tx["asset_id"]).items():
         group_txs = [tx for tx in group_txs if tx["volume"] and tx["type"] in ["buy", "sell"]]
         if not group_txs:
             continue
         df = asset_txs_to_dataframe(group_txs)
-        isin_to_avanza_ids = {
-            "SE0007126024": 563966,  # Bitcoin
-            "SE0010296574": 791709,  # Ethereum
-            "NO0010582984": 463161,  # DNB Global
-            "LU0099574567": 379,     # Fidelity Global Technology
-            "SE0000709123": 1933,    # Swedbank Robur Ny Teknik
-            "SE0009779705": 788394,  # Avanza Auto 6
-        }
-        if group in isin_to_avanza_ids:
-            from .avanza_api import get_history
-            h = get_history(isin_to_avanza_ids[group])
-            df = _fill_with_daily_prices(df, dict((str(dt.date()), p) for dt, p in h))
 
-        if round(df.iloc[-1]['balance']) != 0:
+        if 1000 <= round(df.iloc[-1]['purchase_cost']) <= 300000:
             plt.plot(df['holdings'], label=group_txs[0]['asset_name'])
             # print(df)
 
@@ -183,7 +163,29 @@ def _calc_costavg(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _fill_with_daily_prices(df: pd.DataFrame, pricehistory: Dict[str, float]) -> pd.DataFrame:
+def _fill_with_daily_prices(df: pd.DataFrame) -> pd.DataFrame:
+    from .avanza_api import get_history
+    isin = df.iloc[0]['asset_id']
+    if isin in isin_to_avanza_ids:
+        pricehistory = dict((str(dt.date()), p) for dt, p in get_history(isin_to_avanza_ids[isin]))
+    else:
+        print(f"Could not get price history for {df.iloc[0]['asset_name']} ({isin})")
+        return df
+
+    def _create_row(r, dt):
+        dtstr = dt.isoformat()[:10]
+        if dtstr not in pricehistory:
+            return None
+        return {
+            "asset_name": r["asset_name"],
+            "asset_id": r["asset_id"],
+            "date": dt,
+            "price": pricehistory[dtstr],
+            "balance": r["balance"],
+            "costavg": r["costavg"],
+            "profit": r["profit"],
+            "volume": 0,
+        }
     rows = []
     for r1, r2 in [(df.iloc[i], df.iloc[i + 1]) for i in range(len(df) - 1)]:
         start = r1.name
@@ -191,59 +193,47 @@ def _fill_with_daily_prices(df: pd.DataFrame, pricehistory: Dict[str, float]) ->
         dt = start
         while dt + timedelta(days=1) < end:
             dt += timedelta(days=1)
-            dtstr = dt.isoformat()[:10]
-            if dtstr not in pricehistory:
-                continue
-            rows.append({
-                "date": dt,
-                "price": pricehistory[dtstr],
-                "balance": r1["balance"],
-                "costavg": r1["costavg"],
-                "volume": 0,
-            })
+            row = _create_row(r1, dt)
+            if row:
+                rows.append(row)
+    if not rows:
+        return df
     now = datetime.now()
     dt = end
     while dt + timedelta(days=1) < now:
         dt += timedelta(days=1)
-        dtstr = dt.isoformat()[:10]
-        if dtstr not in pricehistory:
-            continue
-        rows.append({
-            "date": dt,
-            "price": pricehistory[dtstr],
-            "balance": r2["balance"],
-            "costavg": r2["costavg"],
-            "volume": 0,
-        })
-    df = df.append(pd.DataFrame(rows).set_index("date")).sort_index()
-    df['holdings'] = (df['balance'] * df['price']).round(2)
-    df['purchase_cost'] = (df['balance'] * df['costavg']).round(2)
-    df['profit_unrealized'] = df['holdings'] - df['purchase_cost']
+        row = _create_row(r2, dt)
+        if row:
+            rows.append(row)
+    df = df.append(pd.DataFrame(rows).set_index("date"), sort=False).sort_index()
     return df
 
 
-def test_fill_with_daily_prices():
-    from .avanza_api import get_history
-    df = pd.DataFrame([
-        {"date": pd.Timestamp("2018-05-31"), "price": 1, "volume": 1, "balance": 1, "costavg": 1},
-        {"date": pd.Timestamp("2018-08-01"), "price": 2, "volume": -1, "balance": 0, "costavg": 1},
-    ]).set_index("date")
-    df = _fill_with_daily_prices(df, dict((str(dt.date()), p) for dt, p in get_history(463161)))
-    assert df.loc["2018-06-05"]["price"]
+def test_fill_with_daily_prices() -> None:
+    txs = [
+        {"date": pd.Timestamp("2018-09-01"), "asset_id": "SE0011527613", "asset_name": "Avanza Global", "type": "buy", "price": 1, "volume": 1},
+        {"date": pd.Timestamp("2018-09-25"), "asset_id": "SE0011527613", "asset_name": "Avanza Global", "type": "sell", "price": 2, "volume": 1},
+    ]
+    df = asset_txs_to_dataframe(txs)
+    assert df.loc["2018-09-03"]["price"]
 
 
 def asset_txs_to_dataframe(txs: List[Dict]) -> pd.DataFrame:
+    assert all(tx['asset_id'] == txs[0]['asset_id'] for tx in txs)
+    currency_factor_to_sek = 9 if "US" in txs[0]["asset_id"] else 1
     df = txs_to_dataframe(txs)
     df['profit'] = 0.0
     df = _calc_costavg(df)
+    df = _fill_with_daily_prices(df)
+
     df['balance'] = df['balance'].round(2)
-    df['holdings'] = (df['balance'] * df['price']).round(2)
-    df['purchase_cost'] = (df['balance'] * df['costavg']).round(2)
+    df['holdings'] = (df['balance'] * df['price']).round(2) * currency_factor_to_sek
+    df['purchase_cost'] = (df['balance'] * df['costavg']).round(2) * currency_factor_to_sek
     df['profit_unrealized'] = df['holdings'] - df['purchase_cost']
     return df
 
 
-def print_overview(txs):
+def print_overview(txs) -> None:
     balances, costavg, profit = compute_balances(txs)
     rows: List[Any] = []
     for k in sorted(balances.keys(), key=lambda k: -balances[k] * costavg[k]):
@@ -263,8 +253,26 @@ def print_unaccounted_txs(txs):
             print(tx)
 
 
+def print_overview_df(txs: List[Dict]) -> None:
+    last_entries = []
+    for group, group_txs in pydash.group_by(txs, lambda tx: tx["asset_id"]).items():
+        group_txs = [tx for tx in group_txs if tx["volume"] and tx["type"] in ["buy", "sell"]]
+        if not group_txs:
+            continue
+        df = asset_txs_to_dataframe(group_txs)
+        last_entries.append(df.iloc[-1])
+    for entry in last_entries:
+        del entry["amount"]
+        del entry["type"]
+        del entry["volume"]
+        del entry["currency"]
+    df = pd.DataFrame(last_entries)
+    print(df)
+
+
 if __name__ == "__main__":
     txs = _load_data_avanza()
-    print_overview(txs)
-    print_unaccounted_txs(txs)
+    # print_overview(txs)
+    print_overview_df(txs)
+    # print_unaccounted_txs(txs)
     plot_holdings(txs)
