@@ -30,18 +30,8 @@ _typ_to_type = {
 
 isin_registry = {}
 
-isin_to_avanza_ids = {
-    "SE0007126024": 563966,  # Bitcoin
-    "SE0010296574": 791709,  # Ethereum
-    "NO0010582984": 463161,  # DNB Global
-    "LU0099574567": 379,     # Fidelity Global Technology
-    "SE0000709123": 1933,    # Swedbank Robur Ny Teknik
-    "SE0009779705": 788394,  # Avanza Auto 6
-    "SE0008613939": 693994,  # Spiltan Globalfond Investmentbolag
-    "SE0004297927": 325406,  # Spiltan Aktiefond Investmentbolag
-    "SE0011527613": 878733,  # Avanza Global
-    "US0079031078": 529720,  # AMD
-}
+with open('isin_to_avanza_ids.csv') as f:
+    isin_to_avanza_ids = {row[0]: row[1] for row in [line.split(",") for line in f.readlines()]}
 
 
 def _load_data_avanza(filename="./data_private/avanza-transactions_utf8.csv") -> List[Dict]:
