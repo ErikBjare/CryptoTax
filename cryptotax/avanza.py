@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 
 from .load_data import _load_csv
 
+pd.set_option('display.expand_frame_repr', False)
 
 # FIXME: Handle assets priced in USD/EUR correctly
 
@@ -124,17 +125,15 @@ def plot_holdings(txs: List[Dict]) -> None:
 
 
 def txs_to_dataframe(txs: List[Dict]) -> pd.DataFrame:
-    index = [pd.Timestamp(tx['date']) for tx in txs]
-    txs = deepcopy(txs)
-    for tx in txs:
-        tx.pop('date')
-        tx['volume'] *= 1 if tx['type'] == "buy" else -1
-    df = pd.DataFrame(txs, index=index)
-    df.sort_index(inplace=True)
-    return df
+    df = pd.DataFrame(txs)
+    df.date = pd.to_datetime(df.date)
+    df.volume *= [1 if otype == "buy" else -1 for otype in df['type']]
+    df = df.set_index("date")
+    return df.sort_index()
 
 
 def _calc_costavg(df: pd.DataFrame) -> pd.DataFrame:
+    df['profit'] = 0.0
     df['costavg'] = df['price']
     df['balance'] = df['volume']
     for i, d in list(enumerate(df.index))[1:]:
@@ -151,6 +150,18 @@ def _calc_costavg(df: pd.DataFrame) -> pd.DataFrame:
         if df.iloc[i]['type'] == "sell":
             df.iloc[i, df.columns.get_loc('profit')] += -df.iloc[i]['volume'] * (df.iloc[i]['price'] - df.iloc[i]['costavg'])
     return df
+
+
+def test_calc_costavg():
+    df = pd.DataFrame([["2018-01-01", "buy", 1, 1],
+                       ["2018-01-04", "buy", 1.5, 1],
+                       ["2018-01-08", "sell", 2, -2]],
+                      columns=["date", "type", "price", "volume"]).set_index("date")
+    df['profit'] = 0.0
+    df = _calc_costavg(df)
+    print(df)
+    assert all(df['costavg'] == [1, 1.25, 1.25])
+    assert all(df['profit'] == [0, 0, 1.5])
 
 
 def _fill_with_daily_prices(df: pd.DataFrame) -> pd.DataFrame:
@@ -212,7 +223,6 @@ def asset_txs_to_dataframe(txs: List[Dict]) -> pd.DataFrame:
     assert all(tx['asset_id'] == txs[0]['asset_id'] for tx in txs)
     currency_factor_to_sek = 9 if "US" in txs[0]["asset_id"] else 1
     df = txs_to_dataframe(txs)
-    df['profit'] = 0.0
     df = _calc_costavg(df)
     df = _fill_with_daily_prices(df)
 
@@ -221,6 +231,36 @@ def asset_txs_to_dataframe(txs: List[Dict]) -> pd.DataFrame:
     df['purchase_cost'] = (df['balance'] * df['costavg']).round(2) * currency_factor_to_sek
     df['profit_unrealized'] = df['holdings'] - df['purchase_cost']
     return df
+
+
+def all_txs_to_dataframe(txs: List[Dict]) -> pd.DataFrame:
+    df = txs_to_dataframe(txs).reset_index().set_index(["date", "asset_id"])
+    for asset_id in df.index.levels[1]:
+        df_asset = df.loc[df.index.get_level_values("asset_id") == asset_id].copy()
+        df_asset = _calc_costavg(df_asset)
+        # df = df.merge(df_asset, on=["date", "asset_id"], how='outer')  #, on=["date", "asset_id"])
+        df = df.combine_first(df_asset)
+    df = df.unstack(['asset_id'])
+    # FIXME: 'price' shouldn't be in the below calculation, fill from external data instead
+    for key in ['asset_name', 'price', 'balance', 'costavg', 'profit']:
+        df[key] = df[key].ffill()
+    df = df.stack(['asset_id'], dropna=False)
+    df['balance'] = df['balance'].round(2)
+    df['holdings'] = (df['balance'] * df['price']).round(2) * [9 if "US" in aid else 1 for aid in df.index.get_level_values('asset_id')]
+    df['purchase_cost'] = (df['balance'] * df['costavg']).round(2) * [9 if "US" in aid else 1 for aid in df.index.get_level_values('asset_id')]
+    df['profit_unrealized'] = df['holdings'] - df['purchase_cost']
+    return df
+
+
+def test_all_txs_to_dataframe():
+    txs = [
+        {"date": pd.Timestamp("2018-09-01"), "asset_id": "SE0011527613", "asset_name": "Avanza Global", "type": "buy", "price": 53.1, "volume": 3},
+        {"date": pd.Timestamp("2018-09-01"), "asset_id": "US0000000000", "asset_name": "test", "type": "buy", "price": 102.4, "volume": 2},
+        {"date": pd.Timestamp("2018-09-25"), "asset_id": "SE0011527613", "asset_name": "Avanza Global", "type": "sell", "price": 76.2, "volume": 1},
+    ]
+    df = all_txs_to_dataframe(txs)
+    print(df)
+    assert df.loc[('2018-09-25', 'US0000000000'), 'holdings'].item()
 
 
 def print_overview(txs) -> None:
@@ -256,8 +296,12 @@ def print_overview_df(txs: List[Dict]) -> None:
         del entry["type"]
         del entry["volume"]
         del entry["currency"]
+        del entry['asset_id']
+        del entry['purchase_cost']
     df = pd.DataFrame(last_entries)
-    print(df)
+    print(df[df['holdings'] > 0])
+    print(f"Holdings: {sum(df['holdings'])}, unrealized profit: {df['profit_unrealized'].sum()}, {df['profit'].sum()}")
+    print()
 
 
 if __name__ == "__main__":
