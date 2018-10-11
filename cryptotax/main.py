@@ -6,6 +6,8 @@ from datetime import datetime
 from copy import copy, deepcopy
 from math import isclose
 
+from tabulate import tabulate
+
 from .util import fiatconvert
 from . import load_data
 
@@ -14,10 +16,8 @@ Trade = Dict[str, Any]
 
 
 def _print_trades(trades: List[Trade], n=None):
-    h = dict(zip(trades[0].keys(), trades[0].keys()))
-    print(f"{h['time']:10}  {h['pair']:12.12}  {h['type']:4.4}  {h['price']:12}  {h['vol']:9}  {h['cost']:12.10}  {h['cost_usd']:14.14}")
-    for d in (trades[:n] if n else trades):
-        print(f"{d['time'].isoformat():.10}  {' / '.join(d['pair']):12}  {d['type']:4.4}  {d['price']:12.6}  {d['vol']:9.6}  {d['cost']:12.6}  {str(d['cost_usd']):14.14}")
+    print(tabulate([[t['time'].date(), _pair_fmt(t['pair']), t['type'], t['price'], t['vol'], t['cost'], t['cost_usd']] for t in trades],
+                   headers=['time', 'pair', 'type', 'price', 'vol', 'cost', 'cost_usd']))
 
 
 def _sum_trades(t1: Trade, t2: Trade):
@@ -57,6 +57,10 @@ def _reduce_trades(trades: List[Trade]):
                 processed.append(next)
         return processed
     return reduce(r, trades, [])
+
+
+def _pair_fmt(pair):
+    return f"{pair[0].ljust(4)}/{pair[1].rjust(4)}"
 
 
 def _calc_cost_usd(trades: List[Trade]):
@@ -101,12 +105,10 @@ def _cost_basis_per_asset(trades: List[Trade]) -> None:
             costbasis[trade["pair"][0]] += trade["cost_usd"]
             vol[trade["pair"][0]] += trade["vol"]
 
-    print(f"Asset   Costbasis  Vol       Cost/vol")
-    for asset in costbasis:
-        print(f"{asset.ljust(6)}  " +
-              f"${str(round(costbasis[asset])).ljust(8)}  " +
-              f"{str(round(vol[asset], 3)).ljust(8)}  " +
-              f"${str(round(costbasis[asset]/vol[asset], 3)).ljust(8)}")
+    print("")
+    print(tabulate([(asset, round(costbasis[asset]), round(vol[asset], 3), round(costbasis[asset] / vol[asset], 3))
+                    for asset in costbasis],
+                   headers=['asset', 'costbasis', 'vol', 'cost/vol']))
 
 
 def _filter_trades_by_time(trades: List[Trade], year: int) -> List[Trade]:
@@ -210,31 +212,17 @@ def _aggregate_trades(trades: List[Trade]) -> List[Trade]:
     return list(sorted(agg_trades, key=lambda t: t["pair"]))
 
 
-def _print_trade_header() -> None:
-    print(f"{'Pair'.ljust(12)}  {'type'.ljust(5)}  {'vol'.ljust(10)}  {'cost'.ljust(10)}  {'cost_usd'.ljust(10)}  {'cost_usd/unit'.ljust(12)}")
-
-
-def _print_trade(t) -> None:
-    print(f"{' / '.join(t['pair']).ljust(12)}  " +
-          f"{t['type'].ljust(5)}  " +
-          f"{str(round(t['vol'], 3)).ljust(10)}  " +
-          f"{str(round(t['cost'], 3)).ljust(11)} " +
-          f"${str(int(round(t['cost_usd']))).ljust(10)} " +
-          f"${str(round(t['cost_usd']/t['vol'], 3)).ljust(10)}")
-
-
 def _print_balances(trades: List[Trade], year=None) -> None:
-    delta = _calculate_delta(trades)
     print(f"\n# Balance diff {f'for {year}' if year else ''}")
-    for k, d in delta.items():
-        print(f"{k.ljust(6)} {str(round(d['balance'], 3)).ljust(12)} ${str(int(round(d['cost_usd'], 0))).ljust(12)} {(str(int(round(d['cost_sek'], 0))) + 'kr').ljust(12)}")
+    delta = _calculate_delta(trades)
+    print(tabulate([[k, d['balance'], d['cost_usd'], d['cost_sek']] for k, d in delta.items()],
+                   headers=['asset', '∆balance', 'cost_usd', 'cost_sek']))
 
 
 def _print_agg_trades(trades: List[Trade], year=None) -> None:
     print(f"\n# Aggregate trades {f'for {year}' if year else ''}")
-    _print_trade_header()
-    for t in _aggregate_trades(trades):
-        _print_trade(t)
+    print(tabulate([[_pair_fmt(t['pair']), t['type'], t['vol'], t['cost'], t['cost_usd'], t['cost_usd'] / t['vol']] for t in trades],
+                   headers=['pair', 'type', 'vol', 'cost', 'cost_usd', 'cost_usd/unit']))
 
 
 def get_trades() -> List[Trade]:
