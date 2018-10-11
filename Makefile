@@ -17,5 +17,5 @@ test:
 	env $$(cat private.env) pipenv run python3 -m pytest -v cryptotax/main.py cryptotax/download_data.py cryptotax/openfigi.py cryptotax/avanza_api.py cryptotax/avanza.py
 
 check:
-	mypy --ignore-missing-imports cryptotax *.py
-	flake8 --ignore=E225,E265,E402,E501,F401,W391
+	pipenv run mypy --ignore-missing-imports cryptotax
+	pipenv run flake8 --ignore=E225,E265,E402,E501,F401,W391 cryptotax
