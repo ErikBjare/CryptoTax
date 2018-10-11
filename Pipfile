@@ -13,6 +13,7 @@ pandas = "*"
 pydash = "*"
 matplotlib = "*"
 joblib = "*"
+deprecation = "*"
 
 [dev-packages]
 mypy = "*"
