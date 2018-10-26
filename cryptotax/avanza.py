@@ -109,21 +109,16 @@ def compute_balances(trades) -> Tuple[Dict[str, float], Dict[str, float], Dict[s
 
 def plot_holdings(txs: List[Dict]) -> None:
     # TODO: Create a different plot that shows the past performance of the portfolio **if it always had the current allocation**.
-    # TODO: Use all_txs_to_dataframe instead
-    for group, group_txs in pydash.group_by(txs, lambda tx: tx["asset_id"]).items():
-        group_txs = [tx for tx in group_txs if tx["volume"] and tx["type"] in ["buy", "sell"]]
-        if not group_txs:
-            continue
-        df = asset_txs_to_dataframe(group_txs)
-
-        name = group_txs[0]['asset_name']
-        if 'BULL' not in name and 'BEAR' not in name and 100000 <= df['purchase_cost'].max(skipna=True) and 1000 <= df.iloc[-1]['holdings']:
-            plt.semilogy(df['holdings'], label=name)
+    df = all_txs_to_dataframe([tx for tx in txs if tx["volume"] and tx["type"] in ["buy", "sell"]])
+    group = df.reset_index().set_index('date').groupby("asset_name")['holdings']
+    for k, g in group:
+        if g.iloc[-1] > 10000:
+            g.plot(label=k)
 
     plt.title("Value of holdings")
     plt.ylabel("SEK")
-    plt.xlim(pd.Timestamp("2018-06-01"), pd.Timestamp.now())
-    plt.ylim(100000)
+    plt.xlim(pd.Timestamp("2017-01-01"), pd.Timestamp.now())
+    plt.ylim(0)
     plt.legend()
     plt.show()
 
@@ -140,13 +135,28 @@ def txs_to_dataframe(txs: List[Dict]) -> pd.DataFrame:
     return df.sort_index()
 
 
+def _clean_price(df):
+    asset_id = df.reset_index()['asset_id'].iloc[0]
+    asset_name = df.reset_index()['asset_name'].iloc[0]
+    try:
+        calc_price = abs(df['amount'] / df['volume'])
+        error_fac = (df['price'] / calc_price).dropna()
+        e = 0.1
+        if not asset_id[:2] == "US":
+            assert error_fac.between(1 - e, 1 + e).all()
+    except AssertionError:
+        print(f"Price didn't pass consistency check, trying to infer... ({asset_name}, {asset_id})")
+        # print(error_fac)
+        # This fixes some issues, but might create others...
+        df['price'] = -df['amount'] / df['volume']
+    return df
+
+
 def _calc_costavg(df: pd.DataFrame) -> pd.DataFrame:
     df['profit'] = 0.0
     df['costavg'] = df['price']
-    df['balance'] = df['volume']
+    df['balance'] = df['volume'].cumsum()
     for i, d in list(enumerate(df.index))[1:]:
-        df.iloc[i, df.columns.get_loc('balance')] += df.iloc[i - 1]['balance']
-
         prev_cost = df.iloc[i - 1]['balance'] * df.iloc[i - 1]['costavg']
         if df.iloc[i]['type'] == "buy":
             new_cost = df.iloc[i]['price'] * df.iloc[i]['volume']
@@ -228,8 +238,10 @@ def test_fill_with_daily_prices() -> None:
         {"date": pd.Timestamp("2018-09-01"), "asset_id": "SE0011527613", "asset_name": "Avanza Global", "type": "buy", "price": 1, "volume": 1},
         {"date": pd.Timestamp("2018-09-25"), "asset_id": "SE0011527613", "asset_name": "Avanza Global", "type": "sell", "price": 2, "volume": 1},
     ]
-    df = asset_txs_to_dataframe(txs)
-    assert df.loc["2018-09-04"]["price"]
+    for tx in txs:
+        tx['amount'] = tx['price'] * tx['volume']
+    df = all_txs_to_dataframe(txs)
+    assert df.loc[("2018-09-04", "SE0011527613")]["price"]
 
 
 def test_fillall_with_daily_prices() -> None:
@@ -239,29 +251,16 @@ def test_fillall_with_daily_prices() -> None:
         {"date": pd.Timestamp("2018-09-25"), "asset_id": "SE0011527613", "asset_name": "Avanza Global", "type": "sell", "price": 2, "volume": 1},
         {"date": pd.Timestamp("2018-09-25"), "asset_id": "SE0000709123", "asset_name": "Swedbank Robur Ny Teknik", "type": "sell", "price": 2, "volume": 1},
     ]
+    for tx in txs:
+        tx['amount'] = tx['price'] * tx['volume']
     df = all_txs_to_dataframe(txs)
     assert df.loc[("2018-09-04", 'SE0011527613')]["price"]
     assert df.loc[("2018-09-04", 'SE0000709123')]["price"]
 
 
-@deprecated()
-def asset_txs_to_dataframe(txs: List[Dict]) -> pd.DataFrame:
-    ''
-    assert all(tx['asset_id'] == txs[0]['asset_id'] for tx in txs)
-    currency_factor_to_sek = 9 if "US" in txs[0]["asset_id"] else 1
-    df = txs_to_dataframe(txs)
-    df = _calc_costavg(df)
-    df = _fill_with_daily_prices(df)
-
-    df['balance'] = df['balance'].round(2)
-    df['holdings'] = (df['balance'] * df['price']).round(2) * currency_factor_to_sek
-    df['purchase_cost'] = (df['balance'] * df['costavg']).round(2) * currency_factor_to_sek
-    df['profit_unrealized'] = df['holdings'] - df['purchase_cost']
-    return df
-
-
 def all_txs_to_dataframe(txs: List[Dict]) -> pd.DataFrame:
     df = txs_to_dataframe(txs).reset_index().set_index(["date", "asset_id"])
+    df = df.groupby('asset_id').apply(_clean_price)
     df = df.groupby('asset_id').apply(_calc_costavg)
     df = df.groupby(level='asset_id').apply(lambda df: _fill_with_daily_prices(df))
     # The below is required because the groupby-apply for fill_with_daily_prices leaves an extra non-index asset_id column for whatever reason
@@ -286,9 +285,19 @@ def all_txs_to_dataframe(txs: List[Dict]) -> pd.DataFrame:
 
 
 def plot_total_holdings(txs):
+    # Filter away Avanza -> Avanza transactions
+    txs = [tx for tx in txs if 'Avanzakonto' not in tx['asset_name']]
     df = all_txs_to_dataframe(txs)
-    holdings = df.groupby("date")['holdings'].sum()
-    holdings.plot()
+
+    holdings_assets = df.groupby("date")['holdings'].sum()
+    holdings_sek = df.groupby("date")["amount"].sum().cumsum()
+
+    for df in [holdings_assets, holdings_sek]:
+        df[df < 0] = 0
+
+    holdings = pd.concat([holdings_assets, holdings_sek], axis=1)
+    holdings.plot.area()
+    plt.xlim(datetime(2017, 1, 1), datetime.now())
     plt.ylim(0)
     plt.show()
 
@@ -299,6 +308,8 @@ def test_all_txs_to_dataframe():
         {"date": pd.Timestamp("2018-09-01"), "asset_id": "US0000000000", "asset_name": "test", "type": "buy", "price": 102.4, "volume": 2},
         {"date": pd.Timestamp("2018-09-25"), "asset_id": "SE0011527613", "asset_name": "Avanza Global", "type": "sell", "price": 76.2, "volume": 1},
     ]
+    for tx in txs:
+        tx['amount'] = tx['price'] * tx['volume']
     df = all_txs_to_dataframe(txs)
     print(df)
     assert df.loc[('2018-09-25', 'US0000000000'), 'holdings'].item()
@@ -357,6 +368,6 @@ if __name__ == "__main__":
 
     print_overview(txs)
     print_overview_df(txs)
-    print_unaccounted_txs(txs)
+    # print_unaccounted_txs(txs)
     plot_holdings(txs)
     plot_total_holdings(txs)
