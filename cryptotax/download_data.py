@@ -26,7 +26,9 @@ currency2symbolmap = {
 
 def get_data_from_coinmarketcap(currency):
     d_str = datetime.now().strftime("%Y%m%d")
-    r = requests.get(f"https://coinmarketcap.com/currencies/{currency}/historical-data/?start=20140101&end={d_str}")
+    r = requests.get(
+        f"https://coinmarketcap.com/currencies/{currency}/historical-data/?start=20140101&end={d_str}"
+    )
     with open(_coinmarketcap_data_filename.format(currency), "wb") as f:
         pickle.dump(r, f, pickle.HIGHEST_PROTOCOL)
 
@@ -41,7 +43,7 @@ def load_data(currency):
 
 
 def parse_table(doc):
-    soup = BeautifulSoup(doc, 'html.parser')
+    soup = BeautifulSoup(doc, "html.parser")
     tables = soup.find_all("table")
 
     headers = [el.text.lower() for el in tables[0].find_all("th")]

@@ -18,7 +18,9 @@ This is an attempt to fill those tax forms for you automatically (or at least he
 
 # Usage
 
-Use one of the targets in the `Makefile` (adding a proper CLI is work-in-progress)
+Install dependencies using poetry: `poetry install`
+
+Run in the poetry-managed virtualenv: `poetry run cryptotax`
 
 
 # Resources

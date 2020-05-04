@@ -5,6 +5,7 @@
 .ipynb_checkpoints
 *.egg-info
 private.env
+.venv
 
 # Editor
 *.swp

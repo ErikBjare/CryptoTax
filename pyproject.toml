@@ -5,6 +5,9 @@ description = "Get an overview of your assets, calculate your taxes (mainly on c
 authors = ["Erik Bjäreholt <erik@bjareho.lt>"]
 license = "MPL-2.0"
 
+[tool.poetry.scripts]
+cryptotax = "cryptotax.main:main"
+
 [tool.poetry.dependencies]
 python = "^3.7"
 CurrencyConverter = "^0.14.1"
@@ -17,12 +20,14 @@ pydash = "^4.7.6"
 matplotlib = "^3.2.0"
 joblib = "^0.14.1"
 deprecation = "^2.0.7"
+click = "^7.1.2"
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.4.1"
 mypy = "^0.770"
 flake8 = "^3.7.9"
 ipykernel = "^5.1.4"
+black = "^19.10b0"
 
 [build-system]
 requires = ["poetry>=0.12"]

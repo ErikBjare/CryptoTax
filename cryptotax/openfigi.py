@@ -28,7 +28,9 @@ def get_by_isin(isin, exchcode="US"):
     return r.json()[0] if "error" not in r.json()[0] else None
 
 
-@pytest.mark.skipif("OPENFIGI_APIKEY" not in os.environ, reason="No OPENFIGI_APIKEY env var set")
+@pytest.mark.skipif(
+    "OPENFIGI_APIKEY" not in os.environ, reason="No OPENFIGI_APIKEY env var set"
+)
 def test_get_by_isin():
     assert get_by_isin(_amazon_isin)
     assert get_by_isin("US2312312321313") is None

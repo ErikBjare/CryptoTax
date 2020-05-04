@@ -2,6 +2,7 @@ from collections import defaultdict
 from typing import Dict, Tuple, List, Any
 from copy import deepcopy
 from datetime import datetime, timedelta
+from pathlib import Path
 import logging
 
 from deprecation import deprecated
@@ -33,19 +34,34 @@ _typ_to_type = {
 
 
 isin_to_name = {}
+isin_to_avanza_ids: Dict[str, str] = {}
 
-with open("isin_to_avanza_ids.csv") as f:
-    isin_to_avanza_ids = {
-        row[0]: row[1] for row in [line.split(",") for line in f.readlines()]
-    }
+
+def _init_isin_to_avanza_ids():
+    global isin_to_avanza_ids
+
+    # Don't initialize twice
+    if isin_to_avanza_ids:
+        return
+
+    p = Path("data_private") / "isin_to_avanza_ids.csv"
+    if p.exists():
+        with p.open() as f:
+            isin_to_avanza_ids = {
+                row[0]: row[1] for row in [line.split(",") for line in f.readlines()]
+            }
+    else:
+        logger.warn("Could not load ISIN to Avanza ID csv file")
 
 
 def _load_data_avanza(
     filename="./data_private/avanza-transactions_utf8.csv",
 ) -> List[Dict]:
+    _init_isin_to_avanza_ids()
+
     data = _load_csv(filename, delimiter=";")
     for row in data:
-        row["time"] = datetime(*map(int, row.pop("Datum").split("-")))
+        row["time"] = datetime(*map(int, row.pop("Datum").split("-")))  # type: ignore
         ttype = row.pop("Typ av transaktion")
         if ttype in _typ_to_type:
             row["type"] = _typ_to_type[ttype]
@@ -301,7 +317,7 @@ def test_fill_with_daily_prices() -> None:
     for tx in txs:
         tx["amount"] = tx["price"] * tx["volume"]
     df = all_txs_to_dataframe(txs)
-    assert df.loc[("2018-09-04", "SE0011527613")]["price"]
+    assert df.loc[("2018-09-24", "SE0011527613")]["price"] == 1
 
 
 def test_fillall_with_daily_prices() -> None:
@@ -319,7 +335,7 @@ def test_fillall_with_daily_prices() -> None:
             "asset_id": "SE0000709123",
             "asset_name": "Swedbank Robur Ny Teknik",
             "type": "buy",
-            "price": 1,
+            "price": 2,
             "volume": 1,
         },
         {
@@ -327,7 +343,7 @@ def test_fillall_with_daily_prices() -> None:
             "asset_id": "SE0011527613",
             "asset_name": "Avanza Global",
             "type": "sell",
-            "price": 2,
+            "price": 1.1,
             "volume": 1,
         },
         {
@@ -335,18 +351,19 @@ def test_fillall_with_daily_prices() -> None:
             "asset_id": "SE0000709123",
             "asset_name": "Swedbank Robur Ny Teknik",
             "type": "sell",
-            "price": 2,
+            "price": 2.1,
             "volume": 1,
         },
     ]
     for tx in txs:
         tx["amount"] = tx["price"] * tx["volume"]
     df = all_txs_to_dataframe(txs)
-    assert df.loc[("2018-09-04", "SE0011527613")]["price"]
-    assert df.loc[("2018-09-04", "SE0000709123")]["price"]
+    assert df.loc[("2018-09-24", "SE0011527613")]["price"] == 1
+    assert df.loc[("2018-09-24", "SE0000709123")]["price"] == 2
 
 
 def all_txs_to_dataframe(txs: List[Dict]) -> pd.DataFrame:
+    _init_isin_to_avanza_ids()
     df = txs_to_dataframe(txs).reset_index().set_index(["time", "asset_id"])
     df = df.groupby("asset_id").apply(_clean_price)
     df = df.groupby("asset_id").apply(_calc_costavg)
@@ -359,14 +376,19 @@ def all_txs_to_dataframe(txs: List[Dict]) -> pd.DataFrame:
     df = df[non_dups]
     # print(df.tail())
 
-    df = df.unstack(["asset_id"])
     # FIXME: Fill price from external data before ffill
-    for key in ["asset_name", "price", "balance", "costavg", "profit"]:
-        df[key] = df[key].ffill()
+    df = df.unstack(["asset_id"])
+    df = df.resample("1D").asfreq()
+    for col in ["asset_name", "price", "balance", "costavg", "profit"]:
+        df[col] = df[col].ffill()
     df = df.stack(["asset_id"], dropna=False)
+
     df["balance"] = df["balance"].round(2)
+
+    # TODO: Use conversionrate at actual time
     currency_factors = [
-        9 if "US" in aid else 1 for aid in df.index.get_level_values("asset_id")
+        9 if "US" in asset_id else 1
+        for asset_id in df.index.get_level_values("asset_id")
     ]
     df["holdings"] = (df["balance"] * df["price"]).round(2) * currency_factors
     df["purchase_cost"] = (df["balance"] * df["costavg"]).round(2) * currency_factors
@@ -422,14 +444,18 @@ def test_all_txs_to_dataframe():
             "asset_name": "Avanza Global",
             "type": "sell",
             "price": 76.2,
-            "volume": 1,
+            "volume": 2,
         },
     ]
     for tx in txs:
         tx["amount"] = tx["price"] * tx["volume"]
     df = all_txs_to_dataframe(txs)
-    print(df)
-    assert df.loc[("2018-09-25", "US0000000000"), "holdings"].item()
+    assert df.loc[("2018-09-01", "SE0011527613"), "balance"].item() == 3
+    assert df.loc[("2018-09-02", "US0000000000"), "balance"].item() == 2
+    assert df.loc[("2018-09-25", "SE0011527613"), "balance"].item() == 1
+
+    # TODO: Proper value test
+    assert df.loc[("2018-09-02", "US0000000000"), "holdings"].item()
 
 
 def print_overview(txs) -> None:
@@ -558,8 +584,7 @@ def _load_crypto_trades():
     return txs
 
 
-if __name__ == "__main__":
-    logging.basicConfig()
+def main():
     txs = _load_data_avanza()
 
     if True:

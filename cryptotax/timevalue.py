@@ -4,7 +4,7 @@ import pandas as pd
 
 
 def annualized_ror(rate, duration):
-    return (1 + rate)**(timedelta(days=365) / duration) - 1
+    return (1 + rate) ** (timedelta(days=365) / duration) - 1
 
 
 def timevalue(txs):
@@ -26,7 +26,7 @@ def timevalue(txs):
 def test_timevalue():
     txs = [
         {"date": pd.Timestamp("2018-01-01"), "price": 1.0, "volume": 1.0},
-        {"date": pd.Timestamp("2018-02-01"), "price": 1.1, "volume": 1.0}
+        {"date": pd.Timestamp("2018-02-01"), "price": 1.1, "volume": 1.0},
     ]
     timevalue(txs)
     assert False
