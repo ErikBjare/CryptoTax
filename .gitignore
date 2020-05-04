@@ -9,6 +9,6 @@ private.env
 # Editor
 *.swp
 
-
+notebooks
 data_private/*
 tmp/*

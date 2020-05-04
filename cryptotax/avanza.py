@@ -2,6 +2,7 @@ from collections import defaultdict
 from typing import Dict, Tuple, List, Any
 from copy import deepcopy
 from datetime import datetime, timedelta
+import logging
 
 from deprecation import deprecated
 from tabulate import tabulate
@@ -11,7 +12,8 @@ import matplotlib.pyplot as plt
 
 from .load_data import _load_csv
 
-pd.set_option('display.expand_frame_repr', False)
+logger = logging.getLogger(__name__)
+pd.set_option("display.expand_frame_repr", False)
 
 # FIXME: Handle assets priced in USD/EUR correctly
 
@@ -32,23 +34,27 @@ _typ_to_type = {
 
 isin_to_name = {}
 
-with open('isin_to_avanza_ids.csv') as f:
-    isin_to_avanza_ids = {row[0]: row[1] for row in [line.split(",") for line in f.readlines()]}
+with open("isin_to_avanza_ids.csv") as f:
+    isin_to_avanza_ids = {
+        row[0]: row[1] for row in [line.split(",") for line in f.readlines()]
+    }
 
 
-def _load_data_avanza(filename="./data_private/avanza-transactions_utf8.csv") -> List[Dict]:
+def _load_data_avanza(
+    filename="./data_private/avanza-transactions_utf8.csv",
+) -> List[Dict]:
     data = _load_csv(filename, delimiter=";")
     for row in data:
-        row["date"] = row.pop("Datum")
+        row["time"] = datetime(*map(int, row.pop("Datum").split("-")))
         ttype = row.pop("Typ av transaktion")
         if ttype in _typ_to_type:
             row["type"] = _typ_to_type[ttype]
         else:
-            # print(type)
+            logger.warning(f"Unknown type: {ttype}")
             row["type"] = ttype
 
         row["asset_name"] = row.pop("Värdepapper/beskrivning")
-        row["asset_id"] = row.pop('ISIN')
+        row["asset_id"] = row.pop("ISIN")
         isin_to_name[row["asset_id"]] = row["asset_name"]
 
         volume = row.pop("Antal")
@@ -60,57 +66,65 @@ def _load_data_avanza(filename="./data_private/avanza-transactions_utf8.csv") ->
         amount = row.pop("Belopp")
         row["amount"] = float(amount.replace(",", ".")) if amount != "-" else None
 
-        row['currency'] = row.pop("Valuta")
+        row["currency"] = row.pop("Valuta")
 
         row.pop("Konto")
         row.pop("Courtage")
 
     for tx in data:
-        if tx['type'] == "MERGER MED TESLA 1 PÅ 0,11":
-            tx['type'] = 'sell'
-            tx['price'] = 20.75
-            tx['amount'] = tx['price'] * tx['volume']
-        elif tx['type'] == "MERGER MED SOLARCITY 0,11 PÅ 1":
-            tx['type'] = 'buy'
-            tx['price'] = 20.75 / 0.11
-            tx['amount'] = tx['price'] * tx['volume']
+        if tx["type"] == "MERGER MED TESLA 1 PÅ 0,11":
+            tx["type"] = "sell"
+            tx["price"] = 20.75
+            tx["amount"] = tx["price"] * tx["volume"]
+        elif tx["type"] == "MERGER MED SOLARCITY 0,11 PÅ 1":
+            tx["type"] = "buy"
+            tx["price"] = 20.75 / 0.11
+            tx["amount"] = tx["price"] * tx["volume"]
 
-    #print(data[0].keys())
+    # print(data[0].keys())
     return data
 
 
-def compute_balances(trades) -> Tuple[Dict[str, float], Dict[str, float], Dict[str, float]]:
+def compute_balances(
+    trades,
+) -> Tuple[Dict[str, float], Dict[str, float], Dict[str, float]]:
     balances: Dict[str, float] = defaultdict(lambda: 0)
     costavg: Dict[str, float] = defaultdict(lambda: 0)
     profit: Dict[str, float] = defaultdict(lambda: 0)
 
-    for t in sorted(trades, key=lambda t: t['date']):
+    for t in sorted(trades, key=lambda t: t["time"]):
         if t["type"] == "buy":
-            prev_cost = balances[t['asset_id']] * costavg[t['asset_id']]
-            balances[t['asset_id']] += t['volume']
-            if balances[t['asset_id']] == 0:
-                print(f"new balance was zero, something is wrong: \n - {t}\n - {t['volume']}\n - {balances[t['asset_id']]}")
-            elif t['price']:
-                new_cost = t['volume'] * t['price']
-                costavg[t['asset_id']] = (prev_cost + new_cost) / balances[t['asset_id']]
+            prev_cost = balances[t["asset_id"]] * costavg[t["asset_id"]]
+            balances[t["asset_id"]] += t["volume"]
+            if balances[t["asset_id"]] == 0:
+                logger.warning(
+                    f"new balance was zero, something is wrong: \n - {t}\n - {t['volume']}\n - {balances[t['asset_id']]}"
+                )
+            elif t["price"]:
+                new_cost = t["volume"] * t["price"]
+                costavg[t["asset_id"]] = (prev_cost + new_cost) / balances[
+                    t["asset_id"]
+                ]
             else:
                 # Special case where stock was transfered without price attached
                 pass
         elif t["type"] == "dividend":
             profit[t["asset_id"]] += t["amount"]
         elif t["type"] == "sell":
-            #print(costavg[t['asset']])
+            # print(costavg[t['asset']])
             p = (t["price"] - costavg[t["asset_id"]]) * t["volume"]
             profit[t["asset_id"]] += p
-            #print(f"Profited: {p}")
-            balances[t['asset_id']] -= t['volume']
+            # print(f"Profited: {p}")
+            balances[t["asset_id"]] -= t["volume"]
     return balances, costavg, profit
 
 
 def plot_holdings(txs: List[Dict]) -> None:
     # TODO: Create a different plot that shows the past performance of the portfolio **if it always had the current allocation**.
-    df = all_txs_to_dataframe([tx for tx in txs if tx["volume"] and tx["type"] in ["buy", "sell"]])
-    group = df.reset_index().set_index('date').groupby("asset_name")['holdings']
+    df = all_txs_to_dataframe(
+        [tx for tx in txs if tx["volume"] and tx["type"] in ["buy", "sell"]]
+    )
+    group = df.reset_index().set_index("time").groupby("asset_name")["holdings"]
     for k, g in group:
         if g.iloc[-1] > 10000:
             g.plot(label=k)
@@ -129,67 +143,98 @@ def plot_realized_profits():
 
 def txs_to_dataframe(txs: List[Dict]) -> pd.DataFrame:
     df = pd.DataFrame(txs)
-    df.date = pd.to_datetime(df.date)
-    df.volume *= [1 if otype == "buy" else -1 for otype in df['type']]
-    df = df.set_index("date")
+    df.time = pd.to_datetime(df.time)
+    df.volume *= [1 if otype == "buy" else -1 for otype in df["type"]]
+    df = df.set_index("time")
     return df.sort_index()
 
 
 def _clean_price(df):
-    asset_id = df.reset_index()['asset_id'].iloc[0]
-    asset_name = df.reset_index()['asset_name'].iloc[0]
+    asset_id = df.reset_index()["asset_id"].iloc[0]
+    asset_name = df.reset_index()["asset_name"].iloc[0]
     try:
-        calc_price = abs(df['amount'] / df['volume'])
-        error_fac = (df['price'] / calc_price).dropna()
+        calc_price = abs(df["amount"] / df["volume"])
+        error_fac = (df["price"] / calc_price).dropna()
         e = 0.1
         if not asset_id[:2] == "US":
             assert error_fac.between(1 - e, 1 + e).all()
     except AssertionError:
-        print(f"Price didn't pass consistency check, trying to infer... ({asset_name}, {asset_id})")
+        logger.warning(
+            f"Price didn't pass consistency check, trying to infer... ({asset_name}, {df.currency.iloc[0]})"
+        )
         # print(error_fac)
         # This fixes some issues, but might create others...
-        df['price'] = -df['amount'] / df['volume']
+        df["price"] = -df["amount"] / df["volume"]
     return df
 
 
 def _calc_costavg(df: pd.DataFrame) -> pd.DataFrame:
-    df['profit'] = 0.0
-    df['costavg'] = df['price']
-    df['balance'] = df['volume'].cumsum()
+    df["profit"] = 0.0
+    df["costavg"] = df["price"]
+    df["balance"] = df["volume"].cumsum()
     for i, d in list(enumerate(df.index))[1:]:
-        prev_cost = df.iloc[i - 1]['balance'] * df.iloc[i - 1]['costavg']
-        if df.iloc[i]['type'] == "buy":
-            new_cost = df.iloc[i]['price'] * df.iloc[i]['volume']
-            df.iloc[i, df.columns.get_loc('costavg')] = (prev_cost + new_cost) / df.iloc[i]['balance']
+        prev_cost = df.iloc[i - 1]["balance"] * df.iloc[i - 1]["costavg"]
+        if df.iloc[i]["type"] == "buy":
+            new_cost = df.iloc[i]["price"] * df.iloc[i]["volume"]
+            df.iloc[i, df.columns.get_loc("costavg")] = (
+                prev_cost + new_cost
+            ) / df.iloc[i]["balance"]
         else:
-            df.iloc[i, df.columns.get_loc('costavg')] = df.iloc[i - 1]['costavg']
+            df.iloc[i, df.columns.get_loc("costavg")] = df.iloc[i - 1]["costavg"]
 
-        df.iloc[i, df.columns.get_loc('profit')] = df.iloc[i - 1]['profit']
-        if df.iloc[i]['type'] == "sell":
-            df.iloc[i, df.columns.get_loc('profit')] += -df.iloc[i]['volume'] * (df.iloc[i]['price'] - df.iloc[i]['costavg'])
+        df.iloc[i, df.columns.get_loc("profit")] = df.iloc[i - 1]["profit"]
+        if df.iloc[i]["type"] == "sell":
+            df.iloc[i, df.columns.get_loc("profit")] += -df.iloc[i]["volume"] * (
+                df.iloc[i]["price"] - df.iloc[i]["costavg"]
+            )
     return df
 
 
 def test_calc_costavg():
-    df = pd.DataFrame([["2018-01-01", "buy", 1, 1],
-                       ["2018-01-04", "buy", 1.5, 1],
-                       ["2018-01-08", "sell", 2, -2]],
-                      columns=["date", "type", "price", "volume"]).set_index("date")
-    df['profit'] = 0.0
+    df = pd.DataFrame(
+        [
+            ["2018-01-01", "buy", 1, 1],
+            ["2018-01-04", "buy", 1.5, 1],
+            ["2018-01-08", "sell", 2, -2],
+        ],
+        columns=["time", "type", "price", "volume"],
+    ).set_index("time")
+    df["profit"] = 0.0
     df = _calc_costavg(df)
-    assert all(df['costavg'] == [1, 1.25, 1.25])
-    assert all(df['profit'] == [0, 0, 1.5])
+    assert all(df["costavg"] == [1, 1.25, 1.25])
+    assert all(df["profit"] == [0, 0, 1.5])
 
 
 def _fill_with_daily_prices(df: pd.DataFrame) -> pd.DataFrame:
     from .avanza_api import get_history
-    df = df.reset_index().set_index('date')
+    from .load_data import _load_pricehistory
 
-    isin = df.iloc[0]['asset_id']
+    df = df.reset_index().set_index("time")
+    isin = df.iloc[0]["asset_id"]
+
+    # Avanza assets
     if isin in isin_to_avanza_ids:
-        pricehistory = dict((str(dt.date()), p) for dt, p in get_history(isin_to_avanza_ids[isin]))
+        pricehistory = dict(
+            (str(dt.date()), p) for dt, p in get_history(isin_to_avanza_ids[isin])
+        )
+    # Cryptoassets
+    elif isin[0] == "X":
+        try:
+            # TODO: Get rid of hardcoding currency rate
+            sek_per_usd = 9.1
+            pricehistory = dict(
+                (str(k), v["close"] * sek_per_usd)
+                for k, v in _load_pricehistory(isin).items()
+            )
+        except Exception as e:
+            logger.error(
+                f"Could not get price history for {df.iloc[0]['asset_name']} ({isin}) (error: {e})"
+            )
+            return df
     else:
-        # print(f"Could not get price history for {df.iloc[0]['asset_name']} ({isin})")
+        logger.error(
+            f"Could not get price history for {df.iloc[0]['asset_name']} ({isin})"
+        )
         return df
 
     def _create_row(r, dt):
@@ -199,13 +244,14 @@ def _fill_with_daily_prices(df: pd.DataFrame) -> pd.DataFrame:
         return {
             "asset_name": r["asset_name"],
             "asset_id": r["asset_id"],
-            "date": dt,
+            "time": dt,
             "price": pricehistory[dtstr],
             "balance": r["balance"],
             "costavg": r["costavg"],
             "profit": r["profit"],
             "volume": 0,
         }
+
     rows = []
     for r1, r2 in [(df.iloc[i], df.iloc[i + 1]) for i in range(len(df) - 1)]:
         # The trick below is required because sometimes the passed dataframe will be
@@ -229,73 +275,123 @@ def _fill_with_daily_prices(df: pd.DataFrame) -> pd.DataFrame:
             rows.append(row)
 
     # Why is `append(..., sort=False).sort_index()` not equivalent to `append(..., sort=True)`?
-    df = df.append(pd.DataFrame(rows).set_index("date"), sort=False).sort_index()
+    df = df.append(pd.DataFrame(rows).set_index("time"), sort=False).sort_index()
     return df
 
 
 def test_fill_with_daily_prices() -> None:
     txs = [
-        {"date": pd.Timestamp("2018-09-01"), "asset_id": "SE0011527613", "asset_name": "Avanza Global", "type": "buy", "price": 1, "volume": 1},
-        {"date": pd.Timestamp("2018-09-25"), "asset_id": "SE0011527613", "asset_name": "Avanza Global", "type": "sell", "price": 2, "volume": 1},
+        {
+            "time": pd.Timestamp("2018-09-01"),
+            "asset_id": "SE0011527613",
+            "asset_name": "Avanza Global",
+            "type": "buy",
+            "price": 1,
+            "volume": 1,
+        },
+        {
+            "time": pd.Timestamp("2018-09-25"),
+            "asset_id": "SE0011527613",
+            "asset_name": "Avanza Global",
+            "type": "sell",
+            "price": 2,
+            "volume": 1,
+        },
     ]
     for tx in txs:
-        tx['amount'] = tx['price'] * tx['volume']
+        tx["amount"] = tx["price"] * tx["volume"]
     df = all_txs_to_dataframe(txs)
     assert df.loc[("2018-09-04", "SE0011527613")]["price"]
 
 
 def test_fillall_with_daily_prices() -> None:
     txs = [
-        {"date": pd.Timestamp("2018-09-01"), "asset_id": "SE0011527613", "asset_name": "Avanza Global", "type": "buy", "price": 1, "volume": 1},
-        {"date": pd.Timestamp("2018-09-01"), "asset_id": "SE0000709123", "asset_name": "Swedbank Robur Ny Teknik", "type": "buy", "price": 1, "volume": 1},
-        {"date": pd.Timestamp("2018-09-25"), "asset_id": "SE0011527613", "asset_name": "Avanza Global", "type": "sell", "price": 2, "volume": 1},
-        {"date": pd.Timestamp("2018-09-25"), "asset_id": "SE0000709123", "asset_name": "Swedbank Robur Ny Teknik", "type": "sell", "price": 2, "volume": 1},
+        {
+            "time": pd.Timestamp("2018-09-01"),
+            "asset_id": "SE0011527613",
+            "asset_name": "Avanza Global",
+            "type": "buy",
+            "price": 1,
+            "volume": 1,
+        },
+        {
+            "time": pd.Timestamp("2018-09-01"),
+            "asset_id": "SE0000709123",
+            "asset_name": "Swedbank Robur Ny Teknik",
+            "type": "buy",
+            "price": 1,
+            "volume": 1,
+        },
+        {
+            "time": pd.Timestamp("2018-09-25"),
+            "asset_id": "SE0011527613",
+            "asset_name": "Avanza Global",
+            "type": "sell",
+            "price": 2,
+            "volume": 1,
+        },
+        {
+            "time": pd.Timestamp("2018-09-25"),
+            "asset_id": "SE0000709123",
+            "asset_name": "Swedbank Robur Ny Teknik",
+            "type": "sell",
+            "price": 2,
+            "volume": 1,
+        },
     ]
     for tx in txs:
-        tx['amount'] = tx['price'] * tx['volume']
+        tx["amount"] = tx["price"] * tx["volume"]
     df = all_txs_to_dataframe(txs)
-    assert df.loc[("2018-09-04", 'SE0011527613')]["price"]
-    assert df.loc[("2018-09-04", 'SE0000709123')]["price"]
+    assert df.loc[("2018-09-04", "SE0011527613")]["price"]
+    assert df.loc[("2018-09-04", "SE0000709123")]["price"]
 
 
 def all_txs_to_dataframe(txs: List[Dict]) -> pd.DataFrame:
-    df = txs_to_dataframe(txs).reset_index().set_index(["date", "asset_id"])
-    df = df.groupby('asset_id').apply(_clean_price)
-    df = df.groupby('asset_id').apply(_calc_costavg)
-    df = df.groupby(level='asset_id').apply(lambda df: _fill_with_daily_prices(df))
+    df = txs_to_dataframe(txs).reset_index().set_index(["time", "asset_id"])
+    df = df.groupby("asset_id").apply(_clean_price)
+    df = df.groupby("asset_id").apply(_calc_costavg)
+    df = df.groupby(level="asset_id").apply(lambda df: _fill_with_daily_prices(df))
     # The below is required because the groupby-apply for fill_with_daily_prices leaves an extra non-index asset_id column for whatever reason
-    df.pop('asset_id')
+    df.pop("asset_id")
 
     # TODO: Handle duplicates correctly
     non_dups = ~df.index.duplicated()
     df = df[non_dups]
     # print(df.tail())
 
-    df = df.unstack(['asset_id'])
+    df = df.unstack(["asset_id"])
     # FIXME: Fill price from external data before ffill
-    for key in ['asset_name', 'price', 'balance', 'costavg', 'profit']:
+    for key in ["asset_name", "price", "balance", "costavg", "profit"]:
         df[key] = df[key].ffill()
-    df = df.stack(['asset_id'], dropna=False)
-    df['balance'] = df['balance'].round(2)
-    currency_factors = [9 if "US" in aid else 1 for aid in df.index.get_level_values('asset_id')]
-    df['holdings'] = (df['balance'] * df['price']).round(2) * currency_factors
-    df['purchase_cost'] = (df['balance'] * df['costavg']).round(2) * currency_factors
-    df['profit_unrealized'] = df['holdings'] - df['purchase_cost']
+    df = df.stack(["asset_id"], dropna=False)
+    df["balance"] = df["balance"].round(2)
+    currency_factors = [
+        9 if "US" in aid else 1 for aid in df.index.get_level_values("asset_id")
+    ]
+    df["holdings"] = (df["balance"] * df["price"]).round(2) * currency_factors
+    df["purchase_cost"] = (df["balance"] * df["costavg"]).round(2) * currency_factors
+    df["profit_unrealized"] = df["holdings"] - df["purchase_cost"]
     return df
 
 
 def plot_total_holdings(txs):
     # Filter away Avanza -> Avanza transactions
-    txs = [tx for tx in txs if 'Avanzakonto' not in tx['asset_name']]
+    txs = [tx for tx in txs if "Avanzakonto" not in tx["asset_name"]]
     df = all_txs_to_dataframe(txs)
 
-    holdings_assets = df.groupby("date")['holdings'].sum()
-    holdings_sek = df.groupby("date")["amount"].sum().cumsum()
+    df = df.reset_index()
+    df_crypto = df[df["asset_id"].apply(lambda aid: aid[0] == "X")]
+    df_securities = df[df["asset_id"].apply(lambda aid: aid[0] != "X")]
 
-    for df in [holdings_assets, holdings_sek]:
+    dfs = {"securities": df_securities, "crypto": df_crypto}
+    for k, df in dfs.items():
+        df = df.set_index(["time", "asset_id"])
+        df = df.groupby("time")["holdings"].sum()
         df[df < 0] = 0
+        dfs[k] = df
 
-    holdings = pd.concat([holdings_assets, holdings_sek], axis=1)
+    holdings = pd.concat(dfs, axis=1)
+    print(holdings.to_string())
     holdings.plot.area()
     plt.xlim(datetime(2017, 1, 1), datetime.now())
     plt.ylim(0)
@@ -304,70 +400,193 @@ def plot_total_holdings(txs):
 
 def test_all_txs_to_dataframe():
     txs = [
-        {"date": pd.Timestamp("2018-09-01"), "asset_id": "SE0011527613", "asset_name": "Avanza Global", "type": "buy", "price": 53.1, "volume": 3},
-        {"date": pd.Timestamp("2018-09-01"), "asset_id": "US0000000000", "asset_name": "test", "type": "buy", "price": 102.4, "volume": 2},
-        {"date": pd.Timestamp("2018-09-25"), "asset_id": "SE0011527613", "asset_name": "Avanza Global", "type": "sell", "price": 76.2, "volume": 1},
+        {
+            "time": pd.Timestamp("2018-09-01"),
+            "asset_id": "SE0011527613",
+            "asset_name": "Avanza Global",
+            "type": "buy",
+            "price": 53.1,
+            "volume": 3,
+        },
+        {
+            "time": pd.Timestamp("2018-09-01"),
+            "asset_id": "US0000000000",
+            "asset_name": "test",
+            "type": "buy",
+            "price": 102.4,
+            "volume": 2,
+        },
+        {
+            "time": pd.Timestamp("2018-09-25"),
+            "asset_id": "SE0011527613",
+            "asset_name": "Avanza Global",
+            "type": "sell",
+            "price": 76.2,
+            "volume": 1,
+        },
     ]
     for tx in txs:
-        tx['amount'] = tx['price'] * tx['volume']
+        tx["amount"] = tx["price"] * tx["volume"]
     df = all_txs_to_dataframe(txs)
     print(df)
-    assert df.loc[('2018-09-25', 'US0000000000'), 'holdings'].item()
+    assert df.loc[("2018-09-25", "US0000000000"), "holdings"].item()
 
 
 def print_overview(txs) -> None:
     balances, costavg, profit = compute_balances(txs)
     rows: List[Any] = []
     for k in sorted(balances.keys(), key=lambda k: -balances[k] * costavg[k]):
-        #if round(balances[k], 6) != 0:
-            purchase_cost = round(balances[k] * costavg[k])
-            rows.append([isin_to_name[k], k, round(balances[k], 6), costavg[k], profit[k], purchase_cost])
+        # if round(balances[k], 6) != 0:
+        purchase_cost = round(balances[k] * costavg[k])
+        rows.append(
+            [
+                isin_to_name[k],
+                k,
+                round(balances[k], 6),
+                costavg[k],
+                profit[k],
+                purchase_cost,
+            ]
+        )
 
-    print(tabulate(rows, headers=["name", "id", "balance", "costavg", "profit", "purchase_cost"]))
+    print(
+        tabulate(
+            rows,
+            headers=["name", "id", "balance", "costavg", "profit", "purchase_cost"],
+        )
+    )
+
+
+def _normalize_currency_to_sek(txs):
+    # TODO: Proper conversion (take into account price at tx-time)
+    for tx in txs:
+        conv_fac = None
+        if tx["currency"] == "EUR":
+            conv_fac = 10.43
+        elif tx["currency"] == "USD":
+            conv_fac = 9.13
+        elif tx["currency"] == "XXBT":
+            conv_fac = 58_600
+        elif tx["currency"] == "XETH":
+            conv_fac = 1_833
+        elif tx["currency"] == "XXLM":
+            conv_fac = 2.13
+        else:
+            print(f"Couldn't convert! {tx['currency']}")
+
+        if conv_fac:
+            print(tx)
+            tx["currency"] = "SEK"
+            tx["price"] *= conv_fac
+            tx["amount"] *= conv_fac
+            print(tx)
+            print("-" * 80)
+    return txs
 
 
 def print_unaccounted_txs(txs):
     print("Unaccounted txs:")
     for tx in txs:
-        if tx['type'] not in ["buy", "sell", "deposit", "withdrawal", "dividend", "interest"]:
+        if tx["type"] not in [
+            "buy",
+            "sell",
+            "deposit",
+            "withdrawal",
+            "dividend",
+            "interest",
+        ]:
             print(tx)
-        if tx['currency'] != "SEK":
+        if tx["currency"] != "SEK":
             print(tx)
 
 
 def print_overview_df(txs: List[Dict]) -> None:
     txs = [tx for tx in txs if tx["type"] in ["buy", "sell"]]
     df = all_txs_to_dataframe(txs)
-    df = df.groupby('asset_id').agg('last')
-    df = df[df['holdings'] > 0]
+    df = df.groupby("asset_id").agg("last")
+    df = df[df["holdings"] > 0]
+    df["profit"] = df["profit"].round()
+    df["price"] = df["price"].round()
+    df["costavg"] = df["costavg"].round()
+    df = df.sort_values(["holdings"], ascending=False)
 
     summed = df.sum()
-    summed['asset_name'] = '--- SUMMED ---'
-    summed[['costavg', 'balance']] = None
-    summed = summed.rename('-- SUMMED --')
+    summed["asset_name"] = "--- SUMMED ---"
+    summed[["costavg", "balance"]] = None
+    summed = summed.rename("-- SUMMED --")
 
-    print(df.append(summed)[['asset_name', 'holdings', 'costavg', 'balance', 'profit_unrealized']])
+    print(
+        df.append(summed)[
+            [
+                "asset_name",
+                "holdings",
+                "price",
+                "costavg",
+                "balance",
+                "profit",
+                "profit_unrealized",
+            ]
+        ]
+    )
 
 
 def _load_crypto_trades():
     from .load_data import load_all_trades
-    trades = load_all_trades()
-    for t in trades:
-        for k in ['ordertype', 'ledgers']:
-            if k in t:
-                del t[k]
-    return trades
+
+    txs = load_all_trades()
+    for tx in txs:
+        for k in ["ordertype", "ledgers"]:
+            if k in tx:
+                del tx[k]
+    for tx in txs:
+        tx["asset_name"] = tx["asset_id"] = tx["pair"][0]
+        tx["currency"] = tx["pair"][1].lstrip("Z")
+        tx["volume"] = tx.pop("vol")
+        tx["amount"] = tx.pop(
+            "cost"
+        )  # TODO: 'cost' is actually a better name, but would require several changes
+        tx["amount"] *= -1 if tx["type"] == "buy" else 1
+        del tx["pair"]
+        tx.pop("fee", 0)  # TODO: Should probably be included in cost/amount
+        tx.pop("misc", 0)
+        tx.pop("margin", 0)
+    txs = _normalize_currency_to_sek(txs)
+
+    for tx in txs:
+        isin_to_name[tx["asset_id"]] = tx["asset_name"]
+
+    return txs
 
 
 if __name__ == "__main__":
+    logging.basicConfig()
     txs = _load_data_avanza()
 
-    if False:
+    if True:
         crypto_txs = _load_crypto_trades()
-        print(crypto_txs)
+        txs += crypto_txs
+        txs += [
+            {
+                "asset_name": "XETH",
+                "asset_id": "XETH",
+                "volume": 1337,
+                "time": datetime(2016, 1, 1),
+                "price": 1,
+                "currency": "USD",
+                "type": "buy",
+            }
+        ]
+        # print(crypto_txs)
 
-    print_overview(txs)
-    print_overview_df(txs)
-    # print_unaccounted_txs(txs)
-    plot_holdings(txs)
-    plot_total_holdings(txs)
+    txs = sorted(txs, key=lambda tx: tx["time"])
+    # for tx in txs:
+    #     print(tx)
+
+    if 0:
+        print_overview(txs)
+        print_overview_df(txs)
+        # print_unaccounted_txs(txs)
+
+    if 1:
+        # plot_holdings(txs)
+        plot_total_holdings(txs)

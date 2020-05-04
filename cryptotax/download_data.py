@@ -13,12 +13,20 @@ _pricehistory_filename = "tmp/{}-pricehistory.pickle"
 currency2symbolmap = {
     "bitcoin": "XXBT",
     "ethereum": "XETH",
-    "stellar": "XXLM"
+    "stellar": "XXLM",
+    "eos": "XEOS",
+    "bitcoin-cash": "XBCH",
+    "gnosis": "XGNO",
+    "monero": "XXMR",
+    "dogecoin": "XXDG",
+    "ethereum-classic": "XETC",
+    "siacoin": "XXSC",
 }
 
 
 def get_data_from_coinmarketcap(currency):
-    r = requests.get(f"https://coinmarketcap.com/currencies/{currency}/historical-data/?start=20140101&end=20180423")
+    d_str = datetime.now().strftime("%Y%m%d")
+    r = requests.get(f"https://coinmarketcap.com/currencies/{currency}/historical-data/?start=20140101&end={d_str}")
     with open(_coinmarketcap_data_filename.format(currency), "wb") as f:
         pickle.dump(r, f, pickle.HIGHEST_PROTOCOL)
 
@@ -80,7 +88,7 @@ def test_everything():
 
 def main():
     # get_data("bitcoin")
-    for currency in ["bitcoin", "ethereum", "stellar"]:
+    for currency in currency2symbolmap:
         print(f"Getting price history for {currency}...")
         data = load_data(currency)
         table = parse_table(data.text)

@@ -1,6 +1,8 @@
 CryptoTax
 =========
 
+NOTE: This project now does more than just crypto tax stuff, so the README is outdated.
+
 Do you need to file your taxes on crypto gains? Spoiler alert: It sucks.
 
 This is an attempt to fill those tax forms for you automatically (or at least help you considerably) from exchange-exported trading data.
@@ -12,6 +14,11 @@ This is an attempt to fill those tax forms for you automatically (or at least he
 [![Build Status](https://travis-ci.org/ErikBjare/CryptoTax.svg?branch=master)](https://travis-ci.org/ErikBjare/CryptoTax)
 
 ## WILL CONTAIN BUGS, ALWAYS CHECK THE END RESULT MANUALLY
+
+
+# Usage
+
+Use one of the targets in the `Makefile` (adding a proper CLI is work-in-progress)
 
 
 # Resources
