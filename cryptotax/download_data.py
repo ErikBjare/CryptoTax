@@ -1,6 +1,9 @@
 import pickle
+import json
+import iso8601
 from pathlib import Path
 from datetime import datetime, date
+from typing import Dict, Any
 
 import requests
 from bs4 import BeautifulSoup
@@ -29,7 +32,12 @@ def get_data_from_coinmarketcap(currency):
     r = requests.get(
         f"https://coinmarketcap.com/currencies/{currency}/historical-data/?start=20140101&end={d_str}"
     )
-    with open(_coinmarketcap_data_filename.format(currency), "wb") as f:
+    p = Path(_coinmarketcap_data_filename.format(currency))
+
+    # Ensure directory exists
+    p.parent.mkdir(parents=True, exist_ok=True)
+
+    with p.open("wb") as f:
         pickle.dump(r, f, pickle.HIGHEST_PROTOCOL)
 
 
@@ -42,29 +50,21 @@ def load_data(currency):
         return pickle.load(f)
 
 
-def parse_table(doc):
+def parse_json(doc) -> Dict[date, Dict[str, Any]]:
     soup = BeautifulSoup(doc, "html.parser")
-    tables = soup.find_all("table")
+    data = json.loads(soup.find("script", {"id": "__NEXT_DATA__"}).decode_contents())
 
-    headers = [el.text.lower() for el in tables[0].find_all("th")]
-    rows = []
+    # from pprint import pprint
+    # pprint(data)
 
-    for row in tables[0].find_all("tr"):
-        cells = [el.text for el in row.find_all("td")]
-        if len(cells) == len(headers):
-            rows.append({k: v for k, v in zip(headers, cells)})
-        elif cells:
-            print(f"Incomplete row: {cells}")
-
-    table = {datetime.strptime(r["date"], "%b %d, %Y").date(): r for r in rows}
-    for _date, v in table.items():
-        v.pop("date")
-        v.pop("market cap")
-        table[_date] = {
-            ohlc.strip("*"): float(table[_date][ohlc].replace(",", ""))
-            for ohlc in table[_date]
-        }
-    return table
+    state = data["props"]["initialState"]
+    _id = list(state["cryptocurrency"]["info"]["data"].keys())[0]
+    quotes = state["cryptocurrency"]["ohlcvHistorical"][_id]["quotes"]
+    ticks = {}
+    for q in quotes:
+        q = q["quote"]["USD"]
+        ticks[iso8601.parse_date(q["timestamp"]).date()] = q
+    return ticks
 
 
 def _save_table(currency, data):
@@ -75,17 +75,15 @@ def _save_table(currency, data):
 
 def test_everything():
     data = load_data("bitcoin")
-    tablebtc = parse_table(data.text)
+    btc = parse_json(data.text)
 
     d = date(2017, 1, 1)
-
-    print(tablebtc[d])
-    assert all(k in tablebtc[d] for k in ["open", "high", "low", "close"])
+    assert all(k in btc[d] for k in ["open", "high", "low", "close"])
 
     data = load_data("ethereum")
-    tableeth = parse_table(data.text)
+    eth = parse_json(data.text)
 
-    assert tablebtc[date(2017, 1, 1)]["open"] != tableeth[date(2017, 1, 1)]["open"]
+    assert btc[d]["open"] != eth[d]["open"]
 
 
 def main():
@@ -93,7 +91,7 @@ def main():
     for currency in currency2symbolmap:
         print(f"Getting price history for {currency}...")
         data = load_data(currency)
-        table = parse_table(data.text)
+        table = parse_json(data.text)
         _save_table(currency, table)
 
 

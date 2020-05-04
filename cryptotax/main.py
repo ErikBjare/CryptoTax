@@ -247,7 +247,9 @@ def _aggregate_trades(trades: List[Trade]) -> List[Trade]:
     return list(sorted(agg_trades, key=lambda t: t["pair"]))
 
 
-def _print_balances(trades: List[Trade], year=None) -> None:
+def _print_balances(trades: List[Trade], year: int = None) -> None:
+    if year:
+        trades = _filter_trades_by_time(trades, year)
     print(f"\n# Balance diff {f'for {year}' if year else ''}")
     delta = _calculate_delta(trades)
     print(
@@ -258,7 +260,9 @@ def _print_balances(trades: List[Trade], year=None) -> None:
     )
 
 
-def _print_agg_trades(trades: List[Trade], year=None) -> None:
+def _print_agg_trades(trades: List[Trade], year: int = None) -> None:
+    if year:
+        trades = _filter_trades_by_time(trades, year)
     print(f"\n# Aggregate trades {f'for {year}' if year else ''}")
     print(
         tabulate(

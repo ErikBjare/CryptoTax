@@ -20,8 +20,9 @@ This is an attempt to fill those tax forms for you automatically (or at least he
 
 Install dependencies using poetry: `poetry install`
 
-Run in the poetry-managed virtualenv: `poetry run cryptotax`
+Some commands require price history to function, you can download it by running: `make get_data`
 
+Run in the poetry-managed virtualenv: `poetry run cryptotax`
 
 # Resources
 
