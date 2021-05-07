@@ -5,6 +5,8 @@ from .main import get_trades
 from .util import fiatconvert
 from . import load_data
 
+from pprint import pprint
+
 
 class Table:
     def __init__(self, header, _format=None):
@@ -89,7 +91,8 @@ def swedish_taxes(trades, deposits):
     ftblfmt = "{x:8.4f}"
     asset_cost = defaultdict(int)
     asset_vol = defaultdict(int)
-    asset_sold = defaultdict(lambda: defaultdict(int))
+    asset_sold_sek = defaultdict(lambda: defaultdict(int))
+    asset_sold_vol = defaultdict(lambda: defaultdict(int))
     asset_profit = defaultdict(lambda: defaultdict(int))
     profits = defaultdict(lambda: ProfitLoss(0, 0))
     for deposit in filter(lambda d: not iscrypto(d["asset"]), deposits):
@@ -117,8 +120,10 @@ def swedish_taxes(trades, deposits):
             "vol",
             "cost",
             "price",
-            "avg_price",
+            "cost_basis",
             "pair",
+            "holdings_to",
+            "holdings_from"
         ],
         _format=[
             "{x}",
@@ -127,10 +132,12 @@ def swedish_taxes(trades, deposits):
             "{x:+10.2f} SEK",
             "{x:<4}",
             ftblfmt,
-            ftblfmt,
-            ftblfmt,
+            "{x:8.6f}",
+            "{x[0]:8.6f} {x[1]}",
             "{x[0]:10.2f} {x[1]}",
             "({x[0]} -> {x[1]})",
+            "{x[0]:10.2f} {x[1]}",
+            "{x[0]:10.2f} {x[1]}",
         ],
     )
     for trade in trades:
@@ -148,9 +155,13 @@ def swedish_taxes(trades, deposits):
 
         profit = cost_sek - cost * max([0, avg_price])
         year = trade["time"].year
+        asset_sold_sek[year][fro] += cost_sek
+        asset_sold_vol[year][fro] += cost
+        if asset_vol[fro] > 0:
+            asset_cost[fro] *= ((asset_vol[fro] - cost) / asset_vol[fro])
+        else:
+            asset_cost[fro] = 0
         asset_vol[fro] -= cost
-        asset_sold[year][fro] += cost
-        asset_cost[fro] -= cost_sek
         asset_profit[year][fro] += profit
 
         if iscrypto(fro):
@@ -169,9 +180,12 @@ def swedish_taxes(trades, deposits):
         t_table["type"] = trade["type"]
         t_table["vol"] = trade["vol"]
         t_table["cost"] = trade["cost"]
-        t_table["price"] = trade["price"]
-        t_table["avg_price"] = (avg_price, fro)
-        t_table["pair"] = (fro[1:], to[1:])
+        t_table["price"] = (trade["price"], fro)
+        t_table["cost_basis"] = (asset_cost[to] / asset_vol[to], to)
+        t_table["pair"] = (fro, to)
+        t_table["holdings_to"] = (asset_vol[to], to)
+        t_table["holdings_from"] = (asset_vol[fro], fro)
+
     pptable("Trades", t_table)
 
     profit_table = Table(["year", "profit", "loss"])
@@ -184,17 +198,18 @@ def swedish_taxes(trades, deposits):
 
     for (year, ap) in asset_profit.items():
         asset_table = Table(
-            ["asset", "profit", "sold_vol", "final_vol", "total_cost", "avg_price"],
-            _format=["{x}", "{x:+10.2f} SEK", ftblfmt, ftblfmt, ftblfmt, ftblfmt],
+            ["asset", "profit", "sold_vol", "final_vol", "total_cost", "avg_sell_price_sek", "cost_basis"],
+            _format=["{x}", "{x:+10.2f} SEK", "{x:10.6f}", ftblfmt, ftblfmt, ftblfmt, ftblfmt],
         )
         for (asset, profit) in ap.items():
             asset_table.new_row()
             asset_table["asset"] = asset
             asset_table["profit"] = profit
-            asset_table["sold_vol"] = asset_sold[year][asset]
+            asset_table["sold_vol"] = asset_sold_vol[year][asset]
             asset_table["final_vol"] = asset_vol[asset]
             asset_table["total_cost"] = asset_cost[asset]
-            asset_table["avg_price"] = (
+            asset_table["avg_sell_price_sek"] = asset_sold_sek[year][asset] / asset_sold_vol[year][asset]
+            asset_table["cost_basis"] = (
                 0 if not asset_cost[asset] else asset_cost[asset] / asset_vol[asset]
             )
         pptable(f"Profits {year}", asset_table)

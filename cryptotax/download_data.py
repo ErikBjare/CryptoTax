@@ -2,11 +2,14 @@ import pickle
 import json
 import iso8601
 from pathlib import Path
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import Dict, Any
+import time
 
 import requests
 from bs4 import BeautifulSoup
+from pprint import pprint
+from tqdm import tqdm
 
 
 _coinmarketcap_data_filename = "tmp/{}-coinmarketcap-data.pickle"
@@ -24,7 +27,14 @@ currency2symbolmap = {
     "dogecoin": "XXDG",
     "ethereum-classic": "XETC",
     "siacoin": "XXSC",
+    "havven": "SNX",
+    "chainlink": "LINK",
+    "polkadot": "DOT",
+    "uniswap": "UNI",
+    "omg-network": "OMG",
 }
+
+symbol2currencymap = {v: k for k, v in currency2symbolmap.items()}
 
 
 def get_data_from_coinmarketcap(currency):
@@ -41,11 +51,55 @@ def get_data_from_coinmarketcap(currency):
         pickle.dump(r, f, pickle.HIGHEST_PROTOCOL)
 
 
+def get_price(currency: str, date: date) -> float:
+    """Return the historical price of currency at day represented by date from coingecko API.
+    Currency is a string representing a currency in the Coingecko API."""
+    d_str = date.strftime("%d-%m-%Y")
+    while True:
+        try:
+            r = requests.get(
+                f"https://api.coingecko.com/api/v3/coins/{currency}/history?date={d_str}&localization=false"
+            )
+            q = json.loads(r.content)["market_data"]["current_price"]["usd"]
+            return q
+        except Exception as e:
+            if r.status_code == 429:
+                time_out = int(r.headers["Retry-After"]) + 5
+            else:
+                time_out = 10
+            print(f"Error occured downloading data: {e}")
+            print(f"Retrying in {time_out} seconds.")
+            print(f"status: {r.status_code}")
+            time.sleep(time_out)
+
+
+def get_data_from_coingecko(currency):
+    date_ranges = [
+        (date(2016, 10, 1), date(2016, 10, 15)),
+        # (date(2020, 11, 1), date(2020, 12, 31)),
+    ]
+
+    def _daterange(start_date, end_date):
+        print(f"{(end_date - start_date).days} days")
+        for n in range(int((end_date - start_date).days)):
+            yield start_date + timedelta(n)
+
+    ticks = {}
+    for start_date, end_date in date_ranges:
+        for single_date in tqdm(
+            _daterange(start_date, end_date), total=int((end_date - start_date).days)
+        ):
+            ticks[single_date] = get_price_currency(currency, single_date)
+
+    return ticks
+
+
 def load_data(currency):
     filename = _coinmarketcap_data_filename.format(currency)
     if not Path(filename).exists():
         print(f"Didn't find data file for {currency}, downloading...")
         get_data_from_coinmarketcap(currency)
+
     with open(filename, "rb") as f:
         return pickle.load(f)
 
@@ -53,9 +107,6 @@ def load_data(currency):
 def parse_json(doc) -> Dict[date, Dict[str, Any]]:
     soup = BeautifulSoup(doc, "html.parser")
     data = json.loads(soup.find("script", {"id": "__NEXT_DATA__"}).decode_contents())
-
-    # from pprint import pprint
-    # pprint(data)
 
     state = data["props"]["initialState"]
     _id = list(state["cryptocurrency"]["info"]["data"].keys())[0]
