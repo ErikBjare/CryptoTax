@@ -9,9 +9,11 @@ import logging
 
 import click
 from tabulate import tabulate
+from tqdm import tqdm
 
 from .util import fiatconvert
 from . import load_data
+from .download_data import get_price, symbol2currencymap
 
 logger = logging.getLogger(__name__)
 
@@ -96,15 +98,23 @@ def _calc_cost_usd(trades: List[Trade]):
             # Buy/sell something valued in EUR
             trade["cost_usd"] = fiatconvert(trade["cost"], "EUR", "USD", trade["time"])
 
+        elif val_cur == "ZSEK":
+            # Buy/sell something valued in EUR
+            trade["cost_usd"] = fiatconvert(trade["cost"], "SEK", "USD", trade["time"])
+
         elif val_cur == "ZUSD":
             trade["cost_usd"] = trade["cost"]
 
-        elif val_cur in usd_price_csv:
-            trade["cost_usd"] = trade["cost"] * usd_price_csv[val_cur][date]
+        elif val_cur in symbol2currencymap.keys():
+            price = get_price(symbol2currencymap[val_cur], date)
+            trade["cost_usd"] = trade["cost"] * price
+
+        elif val_cur == "XUNKNOWN":
+            pass
 
         else:
             print(
-                f"Could not calculate USD cost for pair: {trade['pair']}, add support for {trade['pair'][1]}"
+                f"Could not calculate USD cost for pair: {trade['pair']}, add support for {trade['pair'][1]} by adding a mapping from symbol to currency in currency2symbolmap."
             )
             trade["cost_usd"] = None
             continue
