@@ -35,11 +35,7 @@ def _load_price_csv2(symbol):
 def _load_pricehistory(symbol) -> Dict[date, Dict[str, float]]:
     """Returns a dict mapping from date to price"""
     with open(f"tmp/{symbol}-pricehistory.pickle", "rb") as f:
-        data = {
-            k.isoformat(): {kk.strip("*"): vv for kk, vv in v.items()}
-            for k, v in pickle.load(f).items()
-        }
-        return data
+        return pickle.load(f)
 
 
 def _load_incoming_balances() -> List[Dict[str, Any]]:
@@ -186,6 +182,19 @@ def _format_csv_from_poloniex(trades_csv):
     return trades_csv
 
 
+def _format_csv_from_generic(trades_csv):
+    """Formats csv files in the format in examples/generic-trades.csv to trades."""
+    for trade in trades_csv:
+        trade["pair"] = trade["pair"].split("/")
+        trade["pair"] = tuple(map(canonical_symbol, trade["pair"]))
+        trade["time"] = dateutil.parser.parse(trade["time"])
+        trade["cost"] = float(trade["cost"])
+        trade["vol"] = float(trade["vol"])
+        trade["price"] = trade["cost"] / trade["vol"]
+    return trades_csv
+
+
+
 def load_all_trades():
     """Loads all trades from the .csv files exported from exchanges. Currently supports Kraken and Poloniex formatted .csv files.
     """
@@ -220,6 +229,13 @@ def load_all_trades():
         print("Found ethplorer trades!")
         trades_ethplorer_csv = _load_csv(ethplorer_trades_filename, delimiter=";")
         trades.extend(_format_csv_from_ethplorer(trades_ethplorer_csv))
+
+    generic_trades_filename = "data_private/generic-trades.csv"
+    if Path(generic_trades_filename).exists():
+        print("Found generic trades!")
+        trades_csv = _load_csv(generic_trades_filename)
+        trades_csv = _format_csv_from_generic(trades_csv)
+        trades.extend(trades_csv)
 
     return list(sorted(trades, key=lambda t: t["time"]))
 
