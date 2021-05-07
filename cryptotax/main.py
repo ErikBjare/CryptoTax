@@ -88,11 +88,9 @@ def _pair_fmt(pair):
 
 
 def _calc_cost_usd(trades: List[Trade]):
-    base_currencies = ["XXBT", "XETH", "XXLM"]
-    usd_price_csv = {k: load_data._load_price_csv2(k) for k in base_currencies}
-
-    for trade in trades:
-        date = trade["time"].date().isoformat()
+    logger.info("Processing trades...")
+    for trade in tqdm(trades):
+        date = trade["time"].date()
         val_cur = trade["pair"][1]
         if val_cur == "ZEUR":
             # Buy/sell something valued in EUR
