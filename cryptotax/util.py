@@ -19,6 +19,7 @@ symbolmap = {
     "SC": "XXSC",
     "EUR": "ZEUR",
     "USD": "ZUSD",
+    "SEK": "ZSEK"
 }
 
 
