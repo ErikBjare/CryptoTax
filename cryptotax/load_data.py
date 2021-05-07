@@ -55,8 +55,13 @@ def _format_csv_from_kraken(trades_csv):
     "Format a CSV from a particular source into a canonical data format"
     for trade in trades_csv:
         # Kraken has really weird pair formatting...
-        pairlen = int(len(trade["pair"]) / 2)
-        trade["pair"] = (trade["pair"][:pairlen], trade["pair"][pairlen:])
+        if "XXBT" not in trade["pair"] and "XBT" in trade["pair"]:
+            trade["pair"] = (trade["pair"][:-3], trade["pair"][-3:])
+        elif "ZEUR" not in trade["pair"] and "EUR" in trade["pair"]:
+            trade["pair"] = (trade["pair"][:-3], trade["pair"][-3:])
+        else:
+            pairlen = int(len(trade["pair"]) / 2)
+            trade["pair"] = (trade["pair"][:pairlen], trade["pair"][pairlen:])
         trade["pair"] = tuple(map(canonical_symbol, trade["pair"]))
 
         trade["time"] = dateutil.parser.parse(trade["time"])
