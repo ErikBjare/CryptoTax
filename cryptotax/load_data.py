@@ -74,6 +74,24 @@ def _format_csv_from_kraken(trades_csv):
     return trades_csv
 
 
+def _format_csv_from_ethplorer(trades_csv):
+    "Format a CSV from a particular source into a canonical data format"
+    trades_list = []
+    for trade in trades_csv:
+        t = dict()
+        if trade["toAddress"] == "0x7a250d5630b4cf539739df2c5dacb4c659f2488d" and trade["tokenSymbol"] == "ETH":
+            t["pair"] = tuple(map(canonical_symbol, ("ETH", "XUNKNOWN")))
+            t["time"] = dateutil.parser.parse(trade["date"])
+            t["price"] = float(trade["usdPrice"].replace(',', '.'))
+            t["vol"] = float(trade["value"].replace(',', '.'))
+            t["cost"] = t["price"] * t["vol"]
+            t["cost_usd"] = t["price"] * t["vol"]
+            t["type"] = "sell"
+            trades_list.append(t)
+
+    return trades_list
+
+
 def _format_csv_from_bitstamp(trades_csv):
     "Format a CSV from a particular source into a canonical data format"
     trades_csv = filter(lambda t: t["Type"] == "Market", trades_csv)
@@ -196,6 +214,12 @@ def load_all_trades():
         print("Found lbtc trades!")
         trades_lbtc_csv = _load_csv(lbtc_trades_filename)
         trades.extend(_format_csv_from_lbtc(trades_lbtc_csv))
+
+    ethplorer_trades_filename = "data_private/ethplorer-trades.csv"
+    if Path(ethplorer_trades_filename).exists():
+        print("Found ethplorer trades!")
+        trades_ethplorer_csv = _load_csv(ethplorer_trades_filename, delimiter=";")
+        trades.extend(_format_csv_from_ethplorer(trades_ethplorer_csv))
 
     return list(sorted(trades, key=lambda t: t["time"]))
 
