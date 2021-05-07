@@ -4,8 +4,11 @@ from typing import List, Dict, Any
 from datetime import date
 import dateutil.parser
 from pathlib import Path
+import logging
 
 from .util import canonical_symbol
+
+logger = logging.getLogger(__name__)
 
 
 def _load_csv(filepath, delimiter=",") -> List[Dict[str, Any]]:
@@ -75,11 +78,14 @@ def _format_csv_from_ethplorer(trades_csv):
     trades_list = []
     for trade in trades_csv:
         t = dict()
-        if trade["toAddress"] == "0x7a250d5630b4cf539739df2c5dacb4c659f2488d" and trade["tokenSymbol"] == "ETH":
+        if (
+            trade["toAddress"] == "0x7a250d5630b4cf539739df2c5dacb4c659f2488d"
+            and trade["tokenSymbol"] == "ETH"
+        ):
             t["pair"] = tuple(map(canonical_symbol, ("ETH", "XUNKNOWN")))
             t["time"] = dateutil.parser.parse(trade["date"])
-            t["price"] = float(trade["usdPrice"].replace(',', '.'))
-            t["vol"] = float(trade["value"].replace(',', '.'))
+            t["price"] = float(trade["usdPrice"].replace(",", "."))
+            t["vol"] = float(trade["value"].replace(",", "."))
             t["cost"] = t["price"] * t["vol"]
             t["cost_usd"] = t["price"] * t["vol"]
             t["type"] = "sell"
@@ -194,7 +200,6 @@ def _format_csv_from_generic(trades_csv):
     return trades_csv
 
 
-
 def load_all_trades():
     """Loads all trades from the .csv files exported from exchanges. Currently supports Kraken and Poloniex formatted .csv files.
     """
@@ -202,37 +207,37 @@ def load_all_trades():
 
     kraken_trades_filename = "data_private/kraken-trades.csv"
     if Path(kraken_trades_filename).exists():
-        print("Found kraken trades!")
+        logger.info("Found kraken trades!")
         trades_kraken_csv = _load_csv(kraken_trades_filename)
         trades.extend(_format_csv_from_kraken(trades_kraken_csv))
 
     polo_trades_filename = "data_private/poloniex-trades.csv"
     if Path(polo_trades_filename).exists():
-        print("Found poloniex trades!")
+        logger.info("Found poloniex trades!")
         trades_polo_csv = _load_csv(polo_trades_filename)
         trades.extend(_format_csv_from_poloniex(trades_polo_csv))
 
     bitstamp_trades_filename = "data_private/bitstamp-trades.csv"
     if Path(bitstamp_trades_filename).exists():
-        print("Found bitstamp trades!")
+        logger.info("Found bitstamp trades!")
         trades_bitstamp_csv = _load_csv(bitstamp_trades_filename)
         trades.extend(_format_csv_from_bitstamp(trades_bitstamp_csv))
 
     lbtc_trades_filename = "data_private/lbtc-trades.csv"
     if Path(lbtc_trades_filename).exists():
-        print("Found lbtc trades!")
+        logger.info("Found lbtc trades!")
         trades_lbtc_csv = _load_csv(lbtc_trades_filename)
         trades.extend(_format_csv_from_lbtc(trades_lbtc_csv))
 
     ethplorer_trades_filename = "data_private/ethplorer-trades.csv"
     if Path(ethplorer_trades_filename).exists():
-        print("Found ethplorer trades!")
+        logger.info("Found ethplorer trades!")
         trades_ethplorer_csv = _load_csv(ethplorer_trades_filename, delimiter=";")
         trades.extend(_format_csv_from_ethplorer(trades_ethplorer_csv))
 
     generic_trades_filename = "data_private/generic-trades.csv"
     if Path(generic_trades_filename).exists():
-        print("Found generic trades!")
+        logger.info("Found generic trades!")
         trades_csv = _load_csv(generic_trades_filename)
         trades_csv = _format_csv_from_generic(trades_csv)
         trades.extend(trades_csv)
@@ -262,14 +267,14 @@ def load_deposits():
     deposits = []
     kraken_ledger_filename = "data_private/kraken-ledgers.csv"
     if Path(kraken_ledger_filename).exists():
-        print("Found kraken ledgers!")
+        logger.info("Found kraken ledgers!")
         ledger_kraken_csv = _load_csv(kraken_ledger_filename)
         deposits_kraken = _format_deposits_kraken(ledger_kraken_csv)
         deposits.extend(deposits_kraken)
 
     bitstamp_trades_filename = "data_private/bitstamp-trades.csv"
     if Path(bitstamp_trades_filename).exists():
-        print("Found bitstamp deposits!")
+        logger.info("Found bitstamp deposits!")
         trades_bitstamp_csv = _load_csv(bitstamp_trades_filename)
         deposits_bitstamp = _format_deposits_bitstamp(trades_bitstamp_csv)
         deposits.extend(deposits_bitstamp)
