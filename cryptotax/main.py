@@ -292,7 +292,6 @@ def get_trades() -> List[Trade]:
 @click.group()
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
-    logger.info("test")
 
 
 @main.command()

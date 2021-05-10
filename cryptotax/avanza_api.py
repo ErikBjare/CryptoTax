@@ -30,7 +30,14 @@ def get_history(oid: int, start=None, end=None, cache=False):
             }
         ),
     )
-    data = r.json()["navigatorPoints"]
+    r.raise_for_status()
+    data = r.json()
+    if "navigatorPoints" in data:
+        data = data["navigatorPoints"]
+    elif "marketMakerBidPoints" in data:
+        data = data["marketMakerBidPoints"]
+    else:
+        raise Exception(data)
     for point in data:
         point[0] = datetime.fromtimestamp(point[0] / 1000)
     data = [p for p in data if p[1]]

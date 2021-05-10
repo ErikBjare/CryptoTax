@@ -3,6 +3,7 @@ from typing import Dict, Tuple, List, Any
 from copy import deepcopy
 from datetime import datetime, timedelta
 from pathlib import Path
+from dataclasses import dataclass
 import logging
 
 from deprecation import deprecated
@@ -15,6 +16,9 @@ from .load_data import _load_csv
 
 logger = logging.getLogger(__name__)
 pd.set_option("display.expand_frame_repr", False)
+
+scriptdir = Path(__file__).parent
+projectdir = scriptdir.parent
 
 # FIXME: Handle assets priced in USD/EUR correctly
 
@@ -30,6 +34,7 @@ _typ_to_type = {
     "Överföring från Nordea": "buy",
     "Övf fr Nordea": "buy",
     "Utdelning": "dividend",
+    "Split": "split",
 }
 
 
@@ -44,7 +49,7 @@ def _init_isin_to_avanza_ids():
     if isin_to_avanza_ids:
         return
 
-    p = Path("data_private") / "isin_to_avanza_ids.csv"
+    p = projectdir / Path("data_private") / "isin_to_avanza_ids.csv"
     if p.exists():
         with p.open() as f:
             isin_to_avanza_ids = {
@@ -55,7 +60,7 @@ def _init_isin_to_avanza_ids():
 
 
 def _load_data_avanza(
-    filename="./data_private/avanza-transactions_utf8.csv",
+    filename=projectdir / "data_private/avanza-transactions_utf8.csv",
 ) -> List[Dict]:
     _init_isin_to_avanza_ids()
 
@@ -132,6 +137,12 @@ def compute_balances(
             profit[t["asset_id"]] += p
             # print(f"Profited: {p}")
             balances[t["asset_id"]] -= t["volume"]
+        elif t["type"] == "split":
+            # TODO
+            logger.error(t)
+        else:
+            logger.warning(f"Unknown tx type {t['type']}")
+
     return balances, costavg, profit
 
 
@@ -230,9 +241,15 @@ def _fill_with_daily_prices(df: pd.DataFrame) -> pd.DataFrame:
 
     # Avanza assets
     if isin in isin_to_avanza_ids:
-        pricehistory = dict(
-            (str(dt.date()), p) for dt, p in get_history(isin_to_avanza_ids[isin])
-        )
+        try:
+            pricehistory = dict(
+                (str(dt.date()), p) for dt, p in get_history(isin_to_avanza_ids[isin])
+            )
+        except Exception as e:
+            logger.error(
+                f"Could not get price history for {df.iloc[0]['asset_name']} ({isin}): {e}"
+            )
+            return df
     # Cryptoassets
     elif isin[0] == "X":
         try:
@@ -244,12 +261,12 @@ def _fill_with_daily_prices(df: pd.DataFrame) -> pd.DataFrame:
             )
         except Exception as e:
             logger.error(
-                f"Could not get price history for {df.iloc[0]['asset_name']} ({isin}) (error: {e})"
+                f"Could not get price history for {df.iloc[0]['asset_name']} ({isin}): {e}"
             )
             return df
     else:
         logger.error(
-            f"Could not get price history for {df.iloc[0]['asset_name']} ({isin})"
+            f"Could not get price history for {df.iloc[0]['asset_name']} ({isin}): missing entry for isin in isin_to_avanza_ids"
         )
         return df
 
@@ -526,11 +543,31 @@ def print_unaccounted_txs(txs):
             print(tx)
 
 
-def print_overview_df(txs: List[Dict]) -> None:
+@dataclass
+class Tx:
+    isin: str
+    type: str
+    amount: Optional[int] = None
+    volume: Optional[int] = None
+
+
+def _handle_splits(txs: List[Dict]) -> List[Dict]:
+    new_txs = []
+    for tx in txs:
+        if tx.type == "split":
+            split_fac = 1  # FIXME: actually get split fac
+            for tx2 in new_txs:
+                if tx2.isin == tx.isin:
+                    tx2.amount *= split_fac
+
+
+def _overview_df(txs: List[Dict], only_holding: bool = True) -> pd.DataFrame:
+    # FIXME: Doesn't account for splits
     txs = [tx for tx in txs if tx["type"] in ["buy", "sell"]]
     df = all_txs_to_dataframe(txs)
     df = df.groupby("asset_id").agg("last")
-    df = df[df["holdings"] > 0]
+    if only_holding:
+        df = df[df["holdings"] > 0]
     df["profit"] = df["profit"].round()
     df["price"] = df["price"].round()
     df["costavg"] = df["costavg"].round()
@@ -541,19 +578,21 @@ def print_overview_df(txs: List[Dict]) -> None:
     summed[["costavg", "balance"]] = None
     summed = summed.rename("-- SUMMED --")
 
-    print(
-        df.append(summed)[
-            [
-                "asset_name",
-                "holdings",
-                "price",
-                "costavg",
-                "balance",
-                "profit",
-                "profit_unrealized",
-            ]
+    return df.append(summed)[
+        [
+            "asset_name",
+            "holdings",
+            "price",
+            "costavg",
+            "balance",
+            "profit",
+            "profit_unrealized",
         ]
-    )
+    ]
+
+
+def print_overview_df(txs: List[Dict], only_holding: bool = True) -> None:
+    print(_overview_df(txs, only_holding))
 
 
 def _load_crypto_trades():

@@ -22,10 +22,12 @@ joblib = "^0.14.1"
 deprecation = "^2.0.7"
 click = "^7.1.2"
 iso8601 = "^0.1.12"
+pykrakenapi = "^0.1.9"
+krakenex = "^2.1.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.4.1"
-mypy = "^0.770"
+mypy = "*"
 flake8 = "^3.7.9"
 ipykernel = "^5.1.4"
 black = "^19.10b0"
