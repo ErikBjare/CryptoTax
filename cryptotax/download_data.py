@@ -8,7 +8,6 @@ import time
 
 import requests
 from bs4 import BeautifulSoup
-from pprint import pprint
 from tqdm import tqdm
 
 
@@ -52,8 +51,10 @@ def get_data_from_coinmarketcap(currency):
 
 
 def get_price(currency: str, date: date) -> float:
-    """Return the historical price of currency at day represented by date from coingecko API.
-    Currency is a string representing a currency in the Coingecko API."""
+    """
+    Return the historical price of currency at day represented by date from coingecko API.
+    Currency is a string representing a currency in the Coingecko API.
+    """
     d_str = date.strftime("%d-%m-%Y")
     while True:
         try:
@@ -73,23 +74,22 @@ def get_price(currency: str, date: date) -> float:
             time.sleep(time_out)
 
 
+def _daterange(start_date, end_date):
+    for n in range(int((end_date - start_date).days)):
+        yield start_date + timedelta(n)
+
+
 def get_data_from_coingecko(currency):
+    # FIXME: Don't hardcode
     date_ranges = [
         (date(2016, 10, 1), date(2016, 10, 15)),
         # (date(2020, 11, 1), date(2020, 12, 31)),
     ]
 
-    def _daterange(start_date, end_date):
-        print(f"{(end_date - start_date).days} days")
-        for n in range(int((end_date - start_date).days)):
-            yield start_date + timedelta(n)
-
     ticks = {}
-    for start_date, end_date in date_ranges:
-        for single_date in tqdm(
-            _daterange(start_date, end_date), total=int((end_date - start_date).days)
-        ):
-            ticks[single_date] = get_price_currency(currency, single_date)
+    for start, end in date_ranges:
+        for _date in tqdm(_daterange(start, end), total=int((end - start).days)):
+            ticks[_date] = get_price(currency, _date)
 
     return ticks
 
