@@ -13,3 +13,7 @@ test:
 check:
 	poetry run mypy --ignore-missing-imports cryptotax
 	poetry run flake8 --ignore=E225,E265,E402,E501,F401,W391,W503 cryptotax
+
+precommit:
+	make check
+	make test

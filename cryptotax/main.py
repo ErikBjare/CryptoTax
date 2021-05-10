@@ -13,7 +13,7 @@ from tqdm import tqdm
 
 from .util import fiatconvert
 from . import load_data
-from .download_data import get_price, symbol2currencymap
+from .download_data import get_price_coingecko, symbol2currencymap
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +106,7 @@ def _calc_cost_usd(trades: List[Trade]):
             trade["cost_usd"] = trade["cost"]
 
         elif val_cur in symbol2currencymap.keys():
-            price = get_price(symbol2currencymap[val_cur], date)
+            price = get_price_coingecko(symbol2currencymap[val_cur], date)
             trade["cost_usd"] = trade["cost"] * price
 
         elif val_cur == "XUNKNOWN":
