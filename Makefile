@@ -8,7 +8,7 @@ get_data:
 	poetry run python3 -m cryptotax.download_data
 
 test:
-	env $$(cat private.env) poetry run python3 -m pytest -v cryptotax/main.py cryptotax/download_data.py cryptotax/openfigi.py cryptotax/avanza_api.py cryptotax/avanza.py
+	env $$(cat private.env) poetry run pytest
 
 check:
 	poetry run mypy --ignore-missing-imports cryptotax

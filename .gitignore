@@ -13,3 +13,7 @@ private.env
 notebooks
 data_private/*
 tmp/*
+
+# Coverage
+.coverage
+htmlcov

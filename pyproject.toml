@@ -25,11 +25,20 @@ iso8601 = "^0.1.12"
 tqdm = "^4.60.0"
 
 [tool.poetry.dev-dependencies]
-pytest = "^5.4.1"
-mypy = "^0.770"
-flake8 = "^3.7.9"
-ipykernel = "^5.1.4"
+pytest = "^6.0"
+pytest-cov = "*"
 black = "^19.10b0"
+mypy = "*"
+flake8 = "*"
+ipykernel = "*"
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "--cov-report=term --cov-report=html --cov=cryptotax"
+testpaths = [
+    "cryptotax",
+]
+python_files = ["*.py"]
 
 [build-system]
 requires = ["poetry>=0.12"]
