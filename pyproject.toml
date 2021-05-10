@@ -22,6 +22,7 @@ joblib = "^0.14.1"
 deprecation = "^2.0.7"
 click = "^7.1.2"
 iso8601 = "^0.1.12"
+tqdm = "^4.60.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.4.1"
